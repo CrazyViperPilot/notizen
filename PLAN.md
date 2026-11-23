@@ -82,7 +82,7 @@ mit Download als Ausweichlösung, `test/js/pdf.test.mjs`.
 ### P11 – Teilen-UI (Haiku)
 `js/ui/share.js` (Dialog), `js/ui/shared.js` („Mit mir geteilt“, Leseansicht mit `surface` `readOnly`, Offline-Zwischenspeicher `shared`).
 
-### P12 – Admin-UI (Haiku)
+### P12 – Admin-UI (Haiku) ✅
 `admin.html`, `css/admin.css`, `js/admin/admin.js`: Liste, Anlegen (Einmal-Passwort einmalig anzeigen), Bearbeiten,
 Reset, Sperren, Sitzungen beenden, Löschen mit Bestätigung, Notizen einsehen (Baum + `surface` `readOnly`), Protokoll.
 
