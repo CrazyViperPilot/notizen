@@ -7,7 +7,7 @@ header('X-Content-Type-Options: nosniff');
 header('Referrer-Policy: same-origin');
 header("Content-Security-Policy: default-src 'none'; frame-ancestors 'none'");
 
-require __DIR__ . '/lib/bootstrap.php';
+require __DIR__ . '/backend/bootstrap.php';
 
 $configFile = __DIR__ . '/config.php';
 if (!is_file($configFile)) {

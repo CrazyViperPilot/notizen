@@ -17,7 +17,7 @@ Regeln:
    Benutzertexte nur über `textContent`/Attribute in den DOM, nie über `innerHTML`. Tippflächen mindestens 44 px.
    Lokale Daten nur über `js/model.js` ändern.
 4. Backend: PHP 7.4-kompatibel (kein `match`, keine benannten Argumente, kein `?->`, keine Union-Typen). Nur die Helfer aus
-   `lib/` benutzen (`q()`, `one()`, `all()`, `tx()`, `t()`, `json_out()`, `fail()`, `body()`, `param()`, `require_*()`).
+   `backend/` benutzen (`q()`, `one()`, `all()`, `tx()`, `t()`, `json_out()`, `fail()`, `body()`, `param()`, `require_*()`).
    Jede SQL-Abfrage mit Platzhaltern, jede Datenabfrage auf den berechtigten Benutzer eingeschränkt.
 5. Prüfe vor dem Abschluss: `php -l` für jede PHP-Datei, `node --check` für jede JS-Datei, `node --test test/js/*.test.mjs` und
    `php test/php/run.php` (wenn eine MariaDB läuft; Zugang siehe `config.php`/README) müssen grün sein.

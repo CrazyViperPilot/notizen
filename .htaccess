@@ -2,7 +2,7 @@
 DirectoryIndex index.html
 Options -Indexes
 
-# Interne Dateien sind nie direkt abrufbar (lib/, migrations/, test/, docs/ haben zusätzlich eigene Sperren).
+# Interne Dateien sind nie direkt abrufbar (backend/, migrations/, test/, docs/ haben zusätzlich eigene Sperren).
 <FilesMatch "^(config.*\.php|.*\.(md|sql|mjs|json\.dist|lock))$">
   <IfModule mod_authz_core.c>
     Require all denied
@@ -13,7 +13,8 @@ Options -Indexes
 </FilesMatch>
 <IfModule mod_rewrite.c>
   RewriteEngine On
-  RewriteRule ^(lib|migrations|test|docs|\.git|\.github|\.claude)(/|$) - [F,L]
+  RewriteRule ^config[^/]*\.php$ - [F,L]
+  RewriteRule ^(backend|migrations|test|docs|\.git|\.github|\.claude)(/|$) - [F,L]
 </IfModule>
 
 <IfModule mod_headers.c>

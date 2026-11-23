@@ -62,7 +62,7 @@ export function tracePen(ctx, stroke, from = 0) {
   }
   for (let i = 0; i < circles.length; i += 3) {
     ctx.moveTo(circles[i] + circles[i + 2], circles[i + 1]);
-    ctx.arc(circles[i], circles[i + 1], circles[i + 2], 0, Math.PI * 2);
+    ctx.arc(circles[i], circles[i + 1], circles[i + 2], 0, Math.PI * 2, true); // same winding as the quads (nonzero union)
   }
 }
 

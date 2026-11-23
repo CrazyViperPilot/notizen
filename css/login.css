@@ -1,1 +1,25 @@
-/* login – wird im zugehörigen Paket gefüllt */
+/* Login-Overlay (js/ui/login.js). Vollbild, zentrierte Karte, safe-area beachten. */
+.nz-login {
+  position: fixed; inset: 0; z-index: 300; background: var(--bg);
+  display: flex; align-items: center; justify-content: center; overflow: auto;
+  padding:
+    calc(16px + var(--safe-top))
+    calc(16px + env(safe-area-inset-right, 0px))
+    calc(16px + var(--safe-bottom))
+    calc(16px + env(safe-area-inset-left, 0px));
+}
+.nz-login-card {
+  width: 100%; max-width: 420px; background: var(--panel); border-radius: 16px;
+  box-shadow: var(--shadow-lg); padding: 28px 24px 24px;
+}
+.nz-login-title { margin: 0; text-align: center; font-size: 28px; font-weight: 700; letter-spacing: -.01em; }
+.nz-login-step { margin: 16px 0 0; text-align: center; font-size: 18px; font-weight: 600; }
+.nz-login-sub { margin: 6px 0 0; text-align: center; font-size: 15px; color: var(--muted); }
+.nz-login-note {
+  margin: 16px 0 0; padding: 10px 12px; border-radius: var(--radius-sm);
+  background: var(--accent-soft); font-size: 15px;
+}
+.nz-login-form { margin-top: 12px; }
+.nz-login-form .field > span { font-size: 15px; }
+.nz-login-form .error-text { margin-top: 2px; }
+.nz-login-form .btn { width: 100%; margin-top: 10px; }

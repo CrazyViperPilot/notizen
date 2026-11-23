@@ -25,7 +25,7 @@ P6 Client-Daten+Sync (Opus) ◀──────────┼─────�
 ## Pakete
 
 ### P1 – Gerüst und Backend-Kern (Opus) ✅
-`api.php`, `lib/bootstrap.php`, `lib/http.php`, `lib/db.php`, `lib/migrate.php`, `lib/auth.php`, `lib/account.php`, `lib/util.php`,
+`api.php`, `backend/bootstrap.php`, `backend/http.php`, `backend/db.php`, `backend/migrate.php`, `backend/auth.php`, `backend/account.php`, `backend/util.php`,
 `migrations/001_init.sql`, `config.example.php`, `.htaccess`, `test/php/run.php` (Testrahmen + Auth-Tests),
 lokale MariaDB-Einrichtung. Routen: `ping`, `login`, `logout`, `me`, `password`, `logout_all`, `account`.
 Liefert die PHP-Helfer, auf denen P2/P3/P4 aufbauen (`db()`, `t()`, `q()`, `one()`, `all()`, `tx()`, `json_out()`, `fail()`, `body()`,
@@ -34,7 +34,7 @@ Liefert die PHP-Helfer, auf denen P2/P3/P4 aufbauen (`db()`, `t()`, `q()`, `one(
 **Stand P1 (für P2–P4 verbindlich):**
 - Routen registriert jedes Modul selbst: `route($name, 'GET'|'POST', $handler, 'none'|'user'|'user_any'|'admin')`. Handler bekommen
   die Benutzerzeile (`$u['id']`, `$u['role']`, …) und geben ein Array zurück (wird zu `{"ok":true, …}`). Fehler: `fail($status, $code, $message)`.
-  CSRF/Origin prüft `dispatch()` automatisch für jedes `POST`. `lib/bootstrap.php` lädt `sync`, `tree`, `share`, `admin` automatisch, sobald die Datei existiert.
+  CSRF/Origin prüft `dispatch()` automatisch für jedes `POST`. `backend/bootstrap.php` lädt `sync`, `tree`, `share`, `admin` automatisch, sobald die Datei existiert.
 - SQL mit Tabellen-Platzhaltern: `one('SELECT * FROM {users} WHERE id = ?', [$id])`; weitere Helfer `val()`, `field($name)` (JSON-Body),
   `clean_text($v, $max, $label)`, `gen_temp_password()`, `password_problem($p)`, `validate_username($u)`, `hash_password($p)`,
   `end_sessions_for($userId)`.
@@ -43,17 +43,17 @@ Liefert die PHP-Helfer, auf denen P2/P3/P4 aufbauen (`db()`, `t()`, `q()`, `one(
   Lauf: `NZ_TEST_DB_USER=nz NZ_TEST_DB_PASS=nz php test/php/run.php [filter]`.
 
 ### P2 – Admin-API (Haiku) ✅
-`lib/admin.php` + Tests in `test/php/admin_test.php`. Routen `admin_users`, `admin_user_create`, `admin_user_update`,
+`backend/admin.php` + Tests in `test/php/admin_test.php`. Routen `admin_users`, `admin_user_create`, `admin_user_update`,
 `admin_user_reset`, `admin_user_lock`, `admin_user_logout`, `admin_user_delete`, `admin_log`. Schutzregeln letzter Admin.
-`admin_tree`/`admin_pages` erst nach P4 (nutzen `lib/tree.php`).
+`admin_tree`/`admin_pages` erst nach P4 (nutzen `backend/tree.php`).
 
 ### P3 – Sync-Backend (Opus) ✅
-`lib/sync.php` + Tests: `sync_pull`, `sync_push`, Konflikte, Papierkorb/Purge, Bereinigung, Quota, Isolation.
+`backend/sync.php` + Tests: `sync_pull`, `sync_push`, Konflikte, Papierkorb/Purge, Bereinigung, Quota, Isolation.
 
 ### P4 – Teilen-API und Lesezugriff (Haiku) ✅
-`lib/tree.php` (`owner_tree`, `note_with_pages`, `can_read_note`, Vorfahren-Prüfung inkl. gelöschter Vorfahren),
-`lib/share.php` (`directory`, `shares_of`, `share`, `unshare`, `shared_tree`, `shared_pages`), danach `admin_tree`/`admin_pages`
-in `lib/admin.php`. Tests inkl. Isolation.
+`backend/tree.php` (`owner_tree`, `note_with_pages`, `can_read_note`, Vorfahren-Prüfung inkl. gelöschter Vorfahren),
+`backend/share.php` (`directory`, `shares_of`, `share`, `unshare`, `shared_tree`, `shared_pages`), danach `admin_tree`/`admin_pages`
+in `backend/admin.php`. Tests inkl. Isolation.
 
 ### P5 – Ink-Kern (Opus) 🟡 umgesetzt, Abnahme auf dem iPad offen (`labor.html`)
 `js/config.js`, `js/ink/codec.js`, `js/ink/stroke.js`, `js/ink/paper.js`, `js/ink/render.js`, `js/ink/surface.js`,

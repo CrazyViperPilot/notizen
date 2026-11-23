@@ -16,7 +16,21 @@ export function setCsrf(token) {
   csrf = token || '';
 }
 
-async function request(method, route, params, body) {
+async function request(method, route, params, body, retried = false) {
+  try {
+    return await send(method, route, params, body);
+  } catch (e) {
+    // No/old CSRF token (e.g. app started offline-first before the session was checked): fetch it once and retry.
+    if (!retried && method === 'POST' && e.status === 403 && e.code === 'bad_csrf') {
+      const me = await send('GET', 'me', null, null);
+      setCsrf(me.csrf);
+      return request(method, route, params, body, true);
+    }
+    throw e;
+  }
+}
+
+async function send(method, route, params, body) {
   const url = new URL(URL_API);
   url.searchParams.set('r', route);
   if (params) for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== null) url.searchParams.set(k, String(v));

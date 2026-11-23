@@ -10,7 +10,7 @@ das Dokument wird dann angepasst.
 iPad (Safari / Home-Bildschirm-App)                       phpexpert.de/notizen/ (dogado, Apache + PHP)
 ┌───────────────────────────────────────────┐            ┌──────────────────────────────────────┐
 │ index.html  ── Bibliothek, Editor, Konto   │  HTTPS     │ api.php  (Front-Controller, JSON)     │
-│ admin.html  ── Admin-Bereich (nur online)  │  gleiche   │ lib/*.php (Auth, Sync, Teilen, Admin) │
+│ admin.html  ── Admin-Bereich (nur online)  │  gleiche   │ backend/*.php (Auth, Sync, Teilen, Admin) │
 │                                            │  Domain    │ migrations/*.sql                       │
 │ model.js ── IndexedDB (lokale Wahrheit)    │◀──────────▶│ MySQL/MariaDB (Tabellen notizen_*)     │
 │ sync.js  ── Push/Pull im Hintergrund       │  Cookie    └──────────────────────────────────────┘
@@ -36,10 +36,10 @@ iPad (Safari / Home-Bildschirm-App)                       phpexpert.de/notizen/ 
   index.html            App (Hash-Router: #/ #/f/<folderId> #/n/<noteId> #/shared #/shared/n/<noteId> #/trash #/account)
   admin.html            Admin-Bereich
   manifest.json  sw.js  icons/
-  .htaccess             CSP + Sicherheits-Header, sperrt lib/, migrations/, test/, docs/, config.php
+  .htaccess             CSP + Sicherheits-Header, sperrt backend/, migrations/, test/, docs/, config.php
   api.php               einziger PHP-Einstieg
   config.example.php    Vorlage; config.php wird vom Deploy erzeugt (nie im Repo)
-  lib/
+  backend/
     bootstrap.php       lädt config, setzt Header, Fehlerbehandlung, Migration/Erst-Admin
     http.php            JSON-Ein-/Ausgabe, Fehler
     db.php              PDO, Tabellenpräfix, Transaktionen
@@ -270,7 +270,7 @@ kollidieren dadurch nicht. Sind die Abstände kleiner als 1e-9, nummeriert der C
   `Content-Security-Policy: default-src 'self'; img-src 'self' data: blob:; script-src 'self'; style-src 'self'; connect-src 'self'; worker-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'`,
   `X-Content-Type-Options: nosniff`, `Referrer-Policy: same-origin`, `Cache-Control: no-store` für die API.
 - Ausgabe: Die UI setzt Benutzertexte nur über `textContent` und Attribute, nie über `innerHTML`.
-- `.htaccess` verweigert den Zugriff auf `lib/`, `migrations/`, `test/`, `docs/`, `config*.php`, `*.md`, `*.sql`.
+- `.htaccess` verweigert den Zugriff auf `backend/`, `migrations/`, `test/`, `docs/`, `config*.php`, `*.md`, `*.sql`.
 
 ### 6.1 Konfiguration und Erst-Admin
 `config.php` (vom Deploy erzeugt):

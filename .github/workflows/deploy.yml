@@ -75,7 +75,7 @@ jobs:
           fi
           if [ ${#ADMIN_PASSWORD} -lt 10 ]; then echo "::error::NOTIZEN_ADMIN_PASSWORD muss mindestens 10 Zeichen haben."; exit 1; fi
           mkdir site
-          rsync -a --exclude '.git' --exclude '.github' --exclude '.claude' --exclude 'test/' --exclude 'docs/' \
+          rsync -a --exclude '/site' --exclude '.git' --exclude '.github' --exclude '.claude' --exclude 'test/' --exclude 'docs/' \
             --exclude '*.md' --exclude 'package*.json' --exclude 'node_modules/' --exclude 'config.example.php' --exclude '.gitignore' \
             ./ site/
           php -r '
@@ -129,7 +129,7 @@ jobs:
           }
           check "https://phpexpert.de/notizen/api.php?r=ping" 200
           check "https://phpexpert.de/notizen/api.php?r=me" 401
-          check "https://phpexpert.de/notizen/lib/db.php" 403
+          check "https://phpexpert.de/notizen/backend/db.php" 403
           check "https://phpexpert.de/notizen/config.php" 403
           check "https://phpexpert.de/notizen/migrations/001_init.sql" 403
           exit $fail

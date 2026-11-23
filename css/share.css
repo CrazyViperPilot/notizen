@@ -1,1 +1,81 @@
-/* share – wird im zugehörigen Paket gefüllt */
+/* Teilen: Dialog (js/ui/share.js), „Mit mir geteilt“ und Leseansicht (js/ui/shared.js). Farben und Abstände aus base.css. */
+
+/* ───────────── Teilen-Dialog ───────────── */
+.share-dialog { display: flex; flex-direction: column; gap: 10px; }
+.share-explain { margin: 4px 0 0; font-size: 15px; line-height: 1.4; color: var(--muted); }
+.share-list {
+  display: flex; flex-direction: column; max-height: 50vh; overflow: auto;
+  border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--panel);
+}
+.share-list:empty { display: none; }
+.share-list > .muted { margin: 0; padding: 12px; }
+.share-row {
+  display: flex; align-items: center; gap: 12px; min-height: var(--tap); padding: 0 14px;
+  border-bottom: 1px solid var(--line); cursor: pointer; -webkit-user-select: none; user-select: none;
+}
+.share-row:last-child { border-bottom: 0; }
+.share-row:active { background: var(--panel-2); }
+.share-row input { flex: 0 0 auto; width: 24px; height: 24px; margin: 0; accent-color: var(--accent); }
+.share-row span { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ───────────── Ansichten ───────────── */
+.view-shared {
+  flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: hidden;
+  background: var(--bg);
+}
+.shared-head {
+  flex: 0 0 auto; display: flex; align-items: center; gap: 8px; min-height: 52px;
+  padding: calc(6px + var(--safe-top)) 10px 6px; background: var(--panel); border-bottom: 1px solid var(--line);
+}
+.shared-head .btn { flex: 0 0 auto; }
+.shared-head h1 {
+  flex: 1 1 auto; min-width: 0; margin: 0; font-size: 18px; font-weight: 600;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.shared-badge {
+  flex: 0 0 auto; padding: 3px 10px; border-radius: 999px;
+  font-size: 13px; background: var(--accent-soft); color: var(--accent);
+}
+.shared-count {
+  flex: 0 0 auto; min-width: 3.5em; text-align: right; font-size: 14px; font-variant-numeric: tabular-nums;
+}
+.shared-hint {
+  flex: 0 0 auto; margin: 0; padding: 8px 14px; font-size: 14px; color: var(--warn); background: var(--panel-2);
+  border-bottom: 1px solid var(--line);
+}
+.shared-message { padding: 24px 18px; }
+.shared-canvas { flex: 1 1 auto; min-height: 0; position: relative; }
+
+/* Übersicht */
+.shared-body {
+  flex: 1 1 auto; min-height: 0; overflow: auto; -webkit-overflow-scrolling: touch;
+  padding: 4px 14px 40px;
+}
+.shared-group { max-width: 720px; margin: 0 auto; }
+.shared-owner { margin: 18px 4px 6px; font-size: 14px; font-weight: 600; color: var(--muted); }
+.shared-group > .shared-children { margin: 0; padding: 0; border: 0; }
+.shared-children { margin-left: 12px; padding-left: 10px; border-left: 1px solid var(--line); }
+.shared-folder > summary {
+  display: flex; align-items: center; gap: 8px; min-height: var(--tap); padding: 0 8px;
+  border-radius: var(--radius-sm); cursor: pointer; font-weight: 500; list-style: none;
+  -webkit-user-select: none; user-select: none; touch-action: manipulation;
+}
+.shared-folder > summary::-webkit-details-marker { display: none; }
+.shared-folder > summary::before {
+  content: '▸'; display: inline-block; width: 1em; color: var(--muted); transition: transform .15s;
+}
+.shared-folder[open] > summary::before { transform: rotate(90deg); }
+.shared-note {
+  display: flex; align-items: center; gap: 12px; min-height: var(--tap); margin: 4px 0; padding: 8px 12px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-sm);
+  color: var(--text); text-decoration: none; -webkit-tap-highlight-color: transparent;
+}
+.shared-note:active { background: var(--panel-2); }
+.shared-note-title { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.shared-note-meta { flex: 0 0 auto; font-size: 13px; color: var(--muted); }
+.shared-empty { padding: 56px 12px; text-align: center; }
+
+@media (max-width: 480px) {
+  .shared-badge { display: none; }
+  .shared-head h1 { font-size: 16px; }
+}

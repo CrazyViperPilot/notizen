@@ -10,7 +10,7 @@ ini_set('display_errors', '1');
 ini_set('log_errors', '0');
 $GLOBALS['NZ_DEBUG'] = true;
 
-require __DIR__ . '/../../lib/bootstrap.php';
+require __DIR__ . '/../../backend/bootstrap.php';
 
 function env($k, $d)
 {
