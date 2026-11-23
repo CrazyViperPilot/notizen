@@ -1,0 +1,133 @@
+# Testet und lädt die App per FTP nach phpexpert.de/games/notizen/ (Muster: deploy-backend.yml im Repo games).
+#
+# Repository-Secrets:
+#   FTP_SERVER, FTP_USER, FTP_PASSWORD        – FTP-Zugang des games-Webspace (Login startet in /games)
+#   NOTIZEN_DB_HOST, NOTIZEN_DB_PORT, NOTIZEN_DB_NAME, NOTIZEN_DB_USER, NOTIZEN_DB_PASSWORD
+#   NOTIZEN_ADMIN_USER, NOTIZEN_ADMIN_PASSWORD – Erst-Admin; ein geändertes Passwort setzt beim nächsten Aufruf das Admin-Passwort zurück
+# Optionale Repository-Variablen: FTP_DIR (Standard ./), FTP_PROTOCOL (ftps|ftp), FTP_SECURITY (strict|loose)
+# Daten liegen in MySQL; auf dem Webspace wird nichts gelöscht (kein --delete).
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - "test/**"
+      - ".claude/**"
+      - ".github/workflows/test.yml"
+  workflow_dispatch:
+
+concurrency: deploy
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: notizen_test
+        ports: ["3306:3306"]
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -proot"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+    steps:
+      - uses: actions/checkout@v6
+      - name: Syntax
+        run: for f in $(git ls-files '*.php'); do php -l "$f" > /dev/null || exit 1; done
+      - name: PHP-Tests
+        env:
+          NZ_TEST_DB_HOST: 127.0.0.1
+          NZ_TEST_DB_USER: root
+          NZ_TEST_DB_PASS: root
+        run: php test/php/run.php
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+      - name: JS-Tests
+        run: if ls test/js/*.test.mjs > /dev/null 2>&1; then node --test test/js/; fi
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Build upload folder
+        env:
+          DB_HOST: ${{ secrets.NOTIZEN_DB_HOST }}
+          DB_PORT: ${{ secrets.NOTIZEN_DB_PORT }}
+          DB_NAME: ${{ secrets.NOTIZEN_DB_NAME }}
+          DB_USER: ${{ secrets.NOTIZEN_DB_USER }}
+          DB_PASSWORD: ${{ secrets.NOTIZEN_DB_PASSWORD }}
+          ADMIN_USER: ${{ secrets.NOTIZEN_ADMIN_USER }}
+          ADMIN_PASSWORD: ${{ secrets.NOTIZEN_ADMIN_PASSWORD }}
+        run: |
+          for v in DB_HOST DB_NAME DB_USER DB_PASSWORD ADMIN_USER ADMIN_PASSWORD; do
+            if [ -z "${!v}" ]; then echo "::error::Secret NOTIZEN_$v fehlt."; exit 1; fi
+          done
+          u=$(printf '%s' "$ADMIN_USER" | tr 'A-Z' 'a-z')
+          if ! [[ "$u" =~ ^[a-z0-9._-]{3,32}$ ]]; then
+            echo "::error::NOTIZEN_ADMIN_USER muss 3–32 Zeichen aus a–z, 0–9, . _ - haben."; exit 1
+          fi
+          if [ ${#ADMIN_PASSWORD} -lt 10 ]; then echo "::error::NOTIZEN_ADMIN_PASSWORD muss mindestens 10 Zeichen haben."; exit 1; fi
+          mkdir site
+          rsync -a --exclude '.git' --exclude '.github' --exclude '.claude' --exclude 'test/' --exclude 'docs/' \
+            --exclude '*.md' --exclude 'package*.json' --exclude 'node_modules/' --exclude 'config.example.php' --exclude '.gitignore' \
+            ./ site/
+          php -r '
+            $u = strtolower(getenv("ADMIN_USER")); $p = getenv("ADMIN_PASSWORD");
+            $c = [
+              "db" => ["host" => getenv("DB_HOST"), "port" => (int)(getenv("DB_PORT") ?: 3306), "name" => getenv("DB_NAME"),
+                       "user" => getenv("DB_USER"), "pass" => getenv("DB_PASSWORD"), "prefix" => "notizen_"],
+              "base_path" => "/games/notizen/",
+              "cookie_secure" => true,
+              "admin" => ["username" => $u, "password_hash" => password_hash($p, PASSWORD_DEFAULT), "fp" => hash("sha256", $u . "\n" . $p)],
+            ];
+            file_put_contents("site/config.php", "<?php\nreturn " . var_export($c, true) . ";\n");
+          '
+          php -l site/config.php
+          find site -type f | grep -v config.php | sort
+
+      # lftp statt einer Node-FTP-Action: kommt mit FTPS-Servern klar, die TLS-Session-Reuse auf der Datenverbindung verlangen.
+      - name: Upload via FTP
+        env:
+          FTP_SERVER: ${{ secrets.FTP_SERVER }}
+          FTP_USER: ${{ secrets.FTP_USER }}
+          LFTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
+          FTP_DIR: ${{ vars.FTP_DIR || './' }}
+          FTP_PROTOCOL: ${{ vars.FTP_PROTOCOL || 'ftps' }}
+          FTP_SECURITY: ${{ vars.FTP_SECURITY || 'strict' }}
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq lftp > /dev/null
+          ssl=$([ "$FTP_PROTOCOL" = "ftp" ] && echo false || echo true)
+          verify=$([ "$FTP_SECURITY" = "loose" ] && echo no || echo yes)
+          lftp --env-password -u "$FTP_USER" "$FTP_SERVER" <<EOF
+          set ftp:ssl-force $ssl
+          set ftp:ssl-protect-data $ssl
+          set ssl:verify-certificate $verify
+          set ftp:passive-mode true
+          set net:timeout 20
+          set net:max-retries 2
+          mkdir -p -f ${FTP_DIR}notizen
+          mirror --reverse --no-perms --verbose site/ ${FTP_DIR}notizen/
+          bye
+          EOF
+
+      - name: Check live URLs
+        run: |
+          fail=0
+          check() {
+            code=$(curl -s -o /tmp/body -w '%{http_code}' "$1")
+            echo "$1 → $code (erwartet $2)"; head -c 300 /tmp/body; echo
+            [ "$code" = "$2" ] || { echo "::error::$1 liefert $code statt $2"; fail=1; }
+          }
+          check "https://phpexpert.de/games/notizen/api.php?r=ping" 200
+          check "https://phpexpert.de/games/notizen/api.php?r=me" 401
+          check "https://phpexpert.de/games/notizen/lib/db.php" 403
+          check "https://phpexpert.de/games/notizen/config.php" 403
+          check "https://phpexpert.de/games/notizen/migrations/001_init.sql" 403
+          exit $fail
