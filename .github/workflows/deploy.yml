@@ -112,9 +112,10 @@ jobs:
           set ftp:passive-mode true
           set net:timeout 20
           set net:max-retries 2
-          # Aufräumen: erster Deploy (23.11.2026) landete versehentlich in einem Unterordner notizen/.
+          # Aufräumen: frühe Deploys (23.11.2026) landeten versehentlich in den Unterordnern notizen/ und site/.
           rm -r -f ${FTP_DIR}notizen
-          mirror --reverse --no-perms --verbose site ${FTP_DIR}
+          rm -r -f ${FTP_DIR}site
+          mirror --reverse --no-perms --verbose site/ ${FTP_DIR}
           bye
           EOF
 
