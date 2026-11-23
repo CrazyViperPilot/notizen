@@ -25,7 +25,7 @@ function cfg($key)
 
 function set_config(array $c)
 {
-    $GLOBALS['NZ_CFG'] = $c + ['base_path' => '/games/notizen/', 'cookie_secure' => true, 'admin' => null];
+    $GLOBALS['NZ_CFG'] = $c + ['base_path' => '/notizen/', 'cookie_secure' => true, 'admin' => null];
     unset($GLOBALS['NZ_PDO']);
 }
 

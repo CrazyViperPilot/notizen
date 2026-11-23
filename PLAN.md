@@ -5,7 +5,7 @@ Verbindlich: [`PRD.md`](PRD.md) und [`docs/ARCHITEKTUR.md`](docs/ARCHITEKTUR.md)
 Die übrigen Pakete setzt der Implementer (Haiku, Effort *high*) um, jeweils mit einem Auftrag, der Dateien und Schnittstellen nennt.
 Opus prüft jedes Haiku-Paket (Review + Tests), bevor das nächste darauf aufbaut.
 
-Status: **P1, P2, P3 erledigt.** Implementer-Agent: `.claude/agents/implementer.md` (Haiku); beim Start eines Pakets mit Effort *high* aufrufen.
+Status: **P1, P2, P3 erledigt; P5 umgesetzt (iPad-Test über https://phpexpert.de/notizen/labor.html).** Implementer-Agent: `.claude/agents/implementer.md` (Haiku); beim Start eines Pakets mit Effort *high* aufrufen.
 
 ## Reihenfolge und Abhängigkeiten
 
@@ -55,7 +55,7 @@ Liefert die PHP-Helfer, auf denen P2/P3/P4 aufbauen (`db()`, `t()`, `q()`, `one(
 `lib/share.php` (`directory`, `shares_of`, `share`, `unshare`, `shared_tree`, `shared_pages`), danach `admin_tree`/`admin_pages`
 in `lib/admin.php`. Tests inkl. Isolation.
 
-### P5 – Ink-Kern (Opus)
+### P5 – Ink-Kern (Opus) 🟡 umgesetzt, Abnahme auf dem iPad offen (`labor.html`)
 `js/config.js`, `js/ink/codec.js`, `js/ink/stroke.js`, `js/ink/paper.js`, `js/ink/render.js`, `js/ink/surface.js`,
 Testseite `test/ink.html` (Fläche ohne Backend), Tests `test/js/{codec,stroke,paper}.test.mjs`.
 Abnahme: auf dem iPad gegenprüfen (Latenz, Handballen, Zoom, Speicher bei 50 Seiten).
@@ -95,5 +95,5 @@ Playwright-Tests (`test/e2e/`), Sicherheits-Review, Leistungstest (2.000 Striche
 
 ## Voraussetzungen beim Betreiber (vor dem ersten Deploy)
 1. Bei dogado eine MySQL/MariaDB-Datenbank anlegen.
-2. Repository-Secrets in **diesem** Repo setzen: `FTP_SERVER`, `FTP_USER`, `FTP_PASSWORD` (wie im Repo `games`), `NOTIZEN_DB_HOST`, `NOTIZEN_DB_PORT`, `NOTIZEN_DB_NAME`, `NOTIZEN_DB_USER`, `NOTIZEN_DB_PASSWORD`,
+2. Repository-Secrets in **diesem** Repo setzen: `FTP_SERVER`, `FTP_USER`, `FTP_PASSWORD` (FTP-Login startet im Web-Ordner `/notizen`), `NOTIZEN_DB_HOST`, `NOTIZEN_DB_PORT`, `NOTIZEN_DB_NAME`, `NOTIZEN_DB_USER`, `NOTIZEN_DB_PASSWORD`,
    `NOTIZEN_ADMIN_USER`, `NOTIZEN_ADMIN_PASSWORD`.

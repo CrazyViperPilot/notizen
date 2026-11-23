@@ -4,7 +4,7 @@ Minimale Handschrift-Notizen für das iPad mit Apple Pencil: Web-App (PWA) mit P
 Benutzerverwaltung und Admin-Bereich. Ordner und Unterordner, A4-Seiten mit vier Papiersorten, offline schreiben mit Sync,
 nur lesend teilen, PDF-Export.
 
-Live (geplant): https://phpexpert.de/games/notizen/
+Live (geplant): https://phpexpert.de/notizen/
 
 - Anforderungen: [PRD.md](PRD.md)
 - Technik: [docs/ARCHITEKTUR.md](docs/ARCHITEKTUR.md)
@@ -13,7 +13,7 @@ Live (geplant): https://phpexpert.de/games/notizen/
 Status: **in Arbeit** – siehe PLAN.md.
 
 ## Voraussetzungen für den Deploy
-Repository-Secrets: `FTP_SERVER`, `FTP_USER`, `FTP_PASSWORD` (wie im Repo `games`), `NOTIZEN_DB_HOST`, `NOTIZEN_DB_PORT`, `NOTIZEN_DB_NAME`,
+Repository-Secrets: `FTP_SERVER`, `FTP_USER`, `FTP_PASSWORD` (FTP-Login startet im Web-Ordner `/notizen`), `NOTIZEN_DB_HOST`, `NOTIZEN_DB_PORT`, `NOTIZEN_DB_NAME`,
 `NOTIZEN_DB_USER`, `NOTIZEN_DB_PASSWORD`, `NOTIZEN_ADMIN_USER`, `NOTIZEN_ADMIN_PASSWORD`.
 
 ## Lokal entwickeln und testen

@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>Notizen – Schreib-Labor</title>
+  <link rel="stylesheet" href="css/labor.css">
+</head>
+<body>
+  <header class="bar">
+    <button data-tool="pen" class="on" title="Stift">✒️</button>
+    <button data-tool="highlighter" title="Textmarker">🖍️</button>
+    <button data-tool="eraser" title="Radierer">🧽</button>
+    <span class="sep"></span>
+    <span id="colors"></span>
+    <span class="sep"></span>
+    <span id="widths"></span>
+    <span class="sep"></span>
+    <button id="undo" title="Rückgängig" disabled>↶</button>
+    <button id="redo" title="Wiederholen" disabled>↷</button>
+    <span class="sep"></span>
+    <select id="paper" title="Papier"></select>
+    <button id="finger" title="Mit Finger zeichnen">☝️</button>
+    <button id="clear" title="Alles löschen">🗑️</button>
+    <span id="info"></span>
+  </header>
+  <main id="surface"></main>
+  <script type="module" src="js/labor.js"></script>
+</body>
+</html>

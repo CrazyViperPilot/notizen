@@ -1,4 +1,4 @@
-# Notizen – Apache-Konfiguration für phpexpert.de/games/notizen/
+# Notizen – Apache-Konfiguration für phpexpert.de/notizen/
 DirectoryIndex index.html
 Options -Indexes
 

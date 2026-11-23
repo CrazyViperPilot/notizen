@@ -1,0 +1,9 @@
+{
+  "name": "notizen",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test test/js/*.test.mjs",
+    "test:php": "php test/php/run.php"
+  }
+}

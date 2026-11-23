@@ -1,7 +1,7 @@
-# Testet und lädt die App per FTP nach phpexpert.de/games/notizen/ (Muster: deploy-backend.yml im Repo games).
+# Testet und lädt die App per FTP nach https://phpexpert.de/notizen/ (Muster: deploy-backend.yml im Repo games).
 #
 # Repository-Secrets:
-#   FTP_SERVER, FTP_USER, FTP_PASSWORD        – FTP-Zugang des games-Webspace (Login startet in /games)
+#   FTP_SERVER, FTP_USER, FTP_PASSWORD        – FTP-Zugang für die Notizen (Login startet im Web-Ordner /notizen)
 #   NOTIZEN_DB_HOST, NOTIZEN_DB_PORT, NOTIZEN_DB_NAME, NOTIZEN_DB_USER, NOTIZEN_DB_PASSWORD
 #   NOTIZEN_ADMIN_USER, NOTIZEN_ADMIN_PASSWORD – Erst-Admin; ein geändertes Passwort setzt beim nächsten Aufruf das Admin-Passwort zurück
 # Optionale Repository-Variablen: FTP_DIR (Standard ./), FTP_PROTOCOL (ftps|ftp), FTP_SECURITY (strict|loose)
@@ -48,7 +48,7 @@ jobs:
         with:
           node-version: 22
       - name: JS-Tests
-        run: if ls test/js/*.test.mjs > /dev/null 2>&1; then node --test test/js/; fi
+        run: if ls test/js/*.test.mjs > /dev/null 2>&1; then node --test test/js/*.test.mjs; fi
 
   deploy:
     needs: test
@@ -83,7 +83,7 @@ jobs:
             $c = [
               "db" => ["host" => getenv("DB_HOST"), "port" => (int)(getenv("DB_PORT") ?: 3306), "name" => getenv("DB_NAME"),
                        "user" => getenv("DB_USER"), "pass" => getenv("DB_PASSWORD"), "prefix" => "notizen_"],
-              "base_path" => "/games/notizen/",
+              "base_path" => "/notizen/",
               "cookie_secure" => true,
               "admin" => ["username" => $u, "password_hash" => password_hash($p, PASSWORD_DEFAULT), "fp" => hash("sha256", $u . "\n" . $p)],
             ];
@@ -112,12 +112,9 @@ jobs:
           set ftp:passive-mode true
           set net:timeout 20
           set net:max-retries 2
-          pwd
-          cls -1 -F ${FTP_DIR}
-          cls -1 -F ${FTP_DIR}notizen
-          mkdir -p -f ${FTP_DIR}notizen
-          mirror --reverse --no-perms --verbose site ${FTP_DIR}notizen
-          cls -1 -F ${FTP_DIR}notizen
+          # Aufräumen: erster Deploy (23.11.2026) landete versehentlich in einem Unterordner notizen/.
+          rm -r -f ${FTP_DIR}notizen
+          mirror --reverse --no-perms --verbose site ${FTP_DIR}
           bye
           EOF
 
@@ -129,9 +126,9 @@ jobs:
             echo "$1 → $code (erwartet $2)"; head -c 300 /tmp/body; echo
             [ "$code" = "$2" ] || { echo "::error::$1 liefert $code statt $2"; fail=1; }
           }
-          check "https://phpexpert.de/games/notizen/api.php?r=ping" 200
-          check "https://phpexpert.de/games/notizen/api.php?r=me" 401
-          check "https://phpexpert.de/games/notizen/lib/db.php" 403
-          check "https://phpexpert.de/games/notizen/config.php" 403
-          check "https://phpexpert.de/games/notizen/migrations/001_init.sql" 403
+          check "https://phpexpert.de/notizen/api.php?r=ping" 200
+          check "https://phpexpert.de/notizen/api.php?r=me" 401
+          check "https://phpexpert.de/notizen/lib/db.php" 403
+          check "https://phpexpert.de/notizen/config.php" 403
+          check "https://phpexpert.de/notizen/migrations/001_init.sql" 403
           exit $fail

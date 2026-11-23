@@ -51,4 +51,4 @@ jobs:
       - name: Syntax
         run: for f in $(git ls-files '*.js' '*.mjs'); do node --check "$f" || exit 1; done
       - name: JS-Tests
-        run: if ls test/js/*.test.mjs > /dev/null 2>&1; then node --test test/js/; else echo "Noch keine JS-Tests."; fi
+        run: if ls test/js/*.test.mjs > /dev/null 2>&1; then node --test test/js/*.test.mjs; else echo "Noch keine JS-Tests."; fi

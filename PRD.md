@@ -1,8 +1,8 @@
 # Notizen – PRD (v0.1, Entwurf)
 
 Minimale Handschrift-Notiz-App für das iPad mit Apple Pencil, als Web-App (PWA) mit PHP/MySQL-Backend,
-Benutzerverwaltung und Admin-Bereich. Eigenes Repo `CrazyViperPilot/notizen`; ausgeliefert unter `phpexpert.de/games/notizen/`
-(eigener Service-Worker-Cache mit Präfix `notizen-`, eigene IndexedDB, eigene Cookies mit Pfad `/games/notizen/`).
+Benutzerverwaltung und Admin-Bereich. Eigenes Repo `CrazyViperPilot/notizen`; ausgeliefert unter `phpexpert.de/notizen/`
+(eigener Service-Worker-Cache mit Präfix `notizen-`, eigene IndexedDB, eigene Cookies mit Pfad `/notizen/`).
 Die Startseite der Spielesammlung (Repo `games`) verlinkt nur dorthin.
 
 Status: **Entwurf 2026-11-23, noch nicht umgesetzt.** Technische Umsetzung: [`docs/ARCHITEKTUR.md`](docs/ARCHITEKTUR.md),
@@ -15,7 +15,7 @@ Arbeitspakete: [`PLAN.md`](PLAN.md).
 - **Offline schreiben**, später automatisch mit dem Server abgleichen. Kein Datenverlust durch WLAN-Abbrüche.
 - **Benutzerkonten**: Der Admin legt Benutzer an und verwaltet sie. Es gibt keine Selbstregistrierung.
 - Notizen **nur lesend teilen** mit anderen Benutzern.
-- Läuft komplett unter **`https://phpexpert.de/games/notizen/`** (Oberfläche und API auf derselben Domain).
+- Läuft komplett unter **`https://phpexpert.de/notizen/`** (Oberfläche und API auf derselben Domain).
 - Vanilla JS ohne Build-Schritt, PHP ohne Framework, MySQL/MariaDB.
 
 ## 2. Nicht-Ziele (v1)
@@ -103,7 +103,7 @@ Das erste Admin-Konto kommt aus GitHub-Secrets (Abschnitt 9). Weitere Admins kan
 - Zuletzt geöffnete geteilte Notizen sind auch **offline lesbar** (Zwischenspeicher, kein Sync-Ziel).
 - Gelöschte oder nicht mehr geteilte Inhalte verschwinden beim Empfänger beim nächsten Online-Abruf.
 
-## 8. Admin-Bereich (`/games/notizen/admin.html`, nur online)
+## 8. Admin-Bereich (`/notizen/admin.html`, nur online)
 - **Benutzerliste** mit Benutzername, Anzeigename, Rolle, Status (aktiv/gesperrt), letzter Anmeldung,
   Speicherverbrauch und Anzahl der Notizen.
 - **Benutzer anlegen**: Benutzername (a–z, 0–9, `.-_`, 3–32 Zeichen, unveränderlich), Anzeigename, Rolle,
@@ -122,12 +122,12 @@ Das erste Admin-Konto kommt aus GitHub-Secrets (Abschnitt 9). Weitere Admins kan
   Ein Admin kann sich nicht selbst löschen.
 
 ## 9. Betrieb
-- Deploy per GitHub Actions (FTP) aus diesem Repo nach `phpexpert.de/games/notizen/` (gleicher FTP-Zugang wie die Spiele, wie bei Frankfurtopoly).
-- **Secrets** (in diesem Repo): FTP-Zugang (`FTP_SERVER`, `FTP_USER`, `FTP_PASSWORD`, wie im Repo `games`), MySQL-Zugang (`NOTIZEN_DB_HOST`, `NOTIZEN_DB_PORT`, `NOTIZEN_DB_NAME`, `NOTIZEN_DB_USER`, `NOTIZEN_DB_PASSWORD`) und
+- Deploy per GitHub Actions (FTP) aus diesem Repo nach `phpexpert.de/notizen/` (eigener FTP-Zugang, Login startet im Web-Ordner /notizen).
+- **Secrets** (in diesem Repo): FTP-Zugang (`FTP_SERVER`, `FTP_USER`, `FTP_PASSWORD`; Login startet im Web-Ordner `/notizen`), MySQL-Zugang (`NOTIZEN_DB_HOST`, `NOTIZEN_DB_PORT`, `NOTIZEN_DB_NAME`, `NOTIZEN_DB_USER`, `NOTIZEN_DB_PASSWORD`) und
   Erst-Admin (`NOTIZEN_ADMIN_USER`, `NOTIZEN_ADMIN_PASSWORD`). Wird `NOTIZEN_ADMIN_PASSWORD` geändert, setzt der
   nächste Deploy das Passwort dieses Admins zurück. Das ist der Notfallzugang, falls man sich ausgesperrt hat.
 - Die Datenbank-Tabellen legt die App beim ersten Aufruf nach einem Deploy selbst an bzw. aktualisiert sie (Migrationen).
-- Die Startseite des Repos `games` bekommt eine Karte „Notizen“, die auf `https://phpexpert.de/games/notizen/` verlinkt.
+- Die Startseite des Repos `games` bekommt eine Karte „Notizen“, die auf `https://phpexpert.de/notizen/` verlinkt.
 - **Datensicherung** des Servers: über die Backup-Funktion des Hosters (MySQL). Zusätzlich hat jeder Benutzer den Backup-Export.
 
 ## 10. Qualitätsziele

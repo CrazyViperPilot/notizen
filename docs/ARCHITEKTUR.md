@@ -7,7 +7,7 @@ das Dokument wird dann angepasst.
 ## 1. Überblick
 
 ```
-iPad (Safari / Home-Bildschirm-App)                       phpexpert.de/games/notizen/ (dogado, Apache + PHP)
+iPad (Safari / Home-Bildschirm-App)                       phpexpert.de/notizen/ (dogado, Apache + PHP)
 ┌───────────────────────────────────────────┐            ┌──────────────────────────────────────┐
 │ index.html  ── Bibliothek, Editor, Konto   │  HTTPS     │ api.php  (Front-Controller, JSON)     │
 │ admin.html  ── Admin-Bereich (nur online)  │  gleiche   │ lib/*.php (Auth, Sync, Teilen, Admin) │
@@ -256,7 +256,7 @@ kollidieren dadurch nicht. Sind die Abstände kleiner als 1e-9, nummeriert der C
 
 ## 6. Authentifizierung und Sicherheit
 - Passwörter: `password_hash(PASSWORD_DEFAULT)`, Prüfung mit `password_verify`, `password_needs_rehash` beim Login.
-- Sitzung: Zufallswert 32 Byte (base64url) im Cookie `notizen_sid`, `Path=/games/notizen/; HttpOnly; Secure; SameSite=Strict`,
+- Sitzung: Zufallswert 32 Byte (base64url) im Cookie `notizen_sid`, `Path=/notizen/; HttpOnly; Secure; SameSite=Strict`,
   `Max-Age` 60 Tage. In der DB steht nur der SHA-256 (`id_hash`). `last_seen_at`/`expires_at` werden höchstens einmal pro Stunde
   fortgeschrieben (gleitend 60 Tage). Sperren, Passwort-Reset und Löschen beenden alle Sitzungen des Benutzers.
 - CSRF: `csrf`-Token (32 Byte) pro Sitzung, kommt mit `login`/`me` zum Client (nur im Speicher), wird als `X-CSRF-Token` gesendet.
@@ -277,7 +277,7 @@ kollidieren dadurch nicht. Sind die Abstände kleiner als 1e-9, nummeriert der C
 ```php
 <?php return [
   'db' => ['host' => '…', 'port' => 3306, 'name' => '…', 'user' => '…', 'pass' => '…', 'prefix' => 'notizen_'],
-  'base_path' => '/games/notizen/',
+  'base_path' => '/notizen/',
   'cookie_secure' => true,
   'admin' => ['username' => '…', 'password_hash' => '<bcrypt>', 'fp' => '<sha256(username . "\n" . passwort)>'],
 ];
@@ -328,9 +328,10 @@ listTrash() → {folders, notes} · purge(kind, id) · emptyTrash() · search(q)
 syncStatus() → {state: 'idle'|'syncing'|'offline'|'auth'|'error', pending, lastSync, error?} · syncNow()
 ```
 
-**`js/ink/stroke.js`**: `smoothPoints(raw) → Int32Array` (Eingabeglättung, Entdoppelung), `outline(stroke, scale?) → Float32Array`
-(geschlossenes Polygon x,y,… in Seitenkoordinaten für Stift; für Textmarker die Mittellinie), `hitTest(stroke, x, y, r) → bool`,
-`bbox(stroke) → [minX, minY, maxX, maxY]`.
+**`js/ink/stroke.js`**: `Smoother` (Streaming-Glättung, live und final identisch), `smoothPoints(raw) → Int32Array`,
+`penShapes(stroke, from?) → {circles: [x,y,r,…], quads: [x1,y1,…,x4,y4,…]}` (Stift = Vereinigung aus Kreisen und Vierecken,
+nonzero-Füllung; robust an Spitzen), `penRadius(width, p255)`, `hitTest(stroke, x, y, r)`, `hitTestSegment(…)`, `bbox(stroke)`.
+Textmarker = Mittellinie `pts` mit fester Breite `HL_WIDTH`.
 
 **`js/ink/paper.js`**: `paperGeometry(paper, orient) → {lines: Float32Array /* x1,y1,x2,y2,… */, dots: Float32Array /* x,y,… */, margin: [x1,y1,x2,y2]|null}`.
 
@@ -340,7 +341,7 @@ syncStatus() → {state: 'idle'|'syncing'|'offline'|'auth'|'error', pending, las
 **`js/ink/surface.js`**
 ```js
 createSurface(container, { readOnly = false, fingerDraw = false }) → Surface
-Surface: setPages(pages /* Page[] inkl. strokes-String */) · updatePage(page) · setTool({kind: 'pen'|'highlighter'|'eraser', color, width})
+Surface: setPages(pages /* Page[] inkl. strokes-String */, {keepView}) · updatePage(page) · flush() · zoom() · setTool({kind: 'pen'|'highlighter'|'eraser', color, width})
          undo() · redo() · canUndo() · canRedo() · scrollToPage(id) · currentPageId() · setFingerDraw(bool) · destroy()
 Ereignisse (EventTarget): 'strokes' {pageId, strokes /* String */} · 'pagechange' {pageId} · 'history' {canUndo, canRedo}
 ```
@@ -375,15 +376,15 @@ Beim Start ruft die App `navigator.storage.persist()` auf.
 
 - Eigenes Repo, eigener Workflow `.github/workflows/deploy.yml` (Muster: `deploy-backend.yml` im Repo `games`, lftp über FTPS):
   - Auslöser: Push auf `main` (ohne reine Doku-Änderungen) und `workflow_dispatch`.
-  - Testschritt: `php -l` für alle PHP-Dateien, `php test/php/run.php` gegen einen MariaDB-Service-Container, `node --test test/js/`.
+  - Testschritt: `php -l` für alle PHP-Dateien, `php test/php/run.php` gegen einen MariaDB-Service-Container, `node --test test/js/*.test.mjs`.
   - Upload-Ordner `site/` = Repo ohne `.github/`, `.claude/`, `test/`, `docs/`, `*.md`, `package*.json`, `config.example.php`,
-    hochgeladen nach `<FTP_DIR>notizen/` (FTP-Login startet in `/games`). `config.php` wird aus den Secrets `NOTIZEN_DB_*` und
+    hochgeladen nach `<FTP_DIR>` (FTP-Login startet im Web-Ordner `/notizen`). `config.php` wird aus den Secrets `NOTIZEN_DB_*` und
     `NOTIZEN_ADMIN_*` erzeugt; der bcrypt-Hash entsteht im Runner mit `php -r 'echo password_hash(getenv("P"), PASSWORD_DEFAULT);'`.
     Kein `--delete` beim Spiegeln, damit nichts auf dem Server verloren geht.
-  - Live-Check: `https://phpexpert.de/games/notizen/api.php?r=ping` → 200.
+  - Live-Check: `https://phpexpert.de/notizen/api.php?r=ping` → 200.
 - `test.yml`: dieselben Tests bei jedem Push/PR auf allen Branches.
-- Repo `games`: nur eine Karte auf der Startseite (`index.html`) mit Link auf `https://phpexpert.de/games/notizen/` und eine
-  Tabellenzeile im README („extern“, wie Frankfurtopoly). Die Wurzel-`.htaccess` dort (`DirectoryIndex index.html index.php`) gilt auch für `/games/notizen/`.
+- Repo `games`: nur eine Karte auf der Startseite (`index.html`) mit Link auf `https://phpexpert.de/notizen/` und eine
+  Tabellenzeile im README („extern“, wie Frankfurtopoly). 
 - Lokal entwickeln: MariaDB im Container, `config.php` aus `config.example.php`, `php -S localhost:8080` im Repo-Wurzelordner,
   App unter `http://localhost:8080/`. `cookie_secure = false` und `base_path = '/'` nur lokal.
 
