@@ -1,0 +1,94 @@
+/* Notizen – gemeinsame Grundlage (Design-Variablen, Knöpfe, Dialoge, Toasts). Jede Ansicht hat ihre eigene CSS-Datei. */
+:root {
+  --bg: #eef0f3;
+  --panel: #ffffff;
+  --panel-2: #f6f7f9;
+  --line: #d9dde3;
+  --text: #1d232b;
+  --muted: #67717e;
+  --accent: #2f5fd0;
+  --accent-soft: #dfe8fb;
+  --danger: #c0392b;
+  --danger-soft: #fbe3e0;
+  --ok: #1e8449;
+  --warn: #b9770e;
+  --radius: 12px;
+  --radius-sm: 8px;
+  --shadow: 0 2px 10px rgba(20, 30, 50, .12);
+  --shadow-lg: 0 10px 40px rgba(20, 30, 50, .25);
+  --tap: 44px;
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, "Segoe UI", Roboto, sans-serif;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  color-scheme: light;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body {
+  font: 16px/1.4 var(--font);
+  color: var(--text);
+  background: var(--bg);
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
+}
+#app { height: 100%; display: flex; flex-direction: column; }
+[hidden] { display: none !important; }
+
+/* Knöpfe */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  min-height: var(--tap); min-width: var(--tap); padding: 0 14px;
+  border: 1px solid var(--line); border-radius: var(--radius-sm);
+  background: var(--panel); color: var(--text); font: inherit; cursor: pointer;
+  -webkit-user-select: none; user-select: none; touch-action: manipulation;
+}
+.btn:active { transform: translateY(1px); }
+.btn:disabled { opacity: .4; cursor: default; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn.danger { background: var(--danger); border-color: var(--danger); color: #fff; }
+.btn.ghost { background: transparent; border-color: transparent; }
+.btn.icon { padding: 0; font-size: 20px; }
+.btn.on { background: var(--accent-soft); border-color: var(--accent); }
+
+/* Formulare */
+.field { display: flex; flex-direction: column; gap: 4px; margin: 10px 0; }
+.field > span { font-size: 14px; color: var(--muted); }
+.input, select.input {
+  min-height: var(--tap); padding: 0 12px; border: 1px solid var(--line); border-radius: var(--radius-sm);
+  font: inherit; font-size: 16px; /* ≥16px: iOS zoomt sonst beim Fokus */
+  background: #fff; color: var(--text); width: 100%;
+}
+.input:focus { outline: 2px solid var(--accent); outline-offset: 0; border-color: var(--accent); }
+.error-text { color: var(--danger); font-size: 14px; min-height: 1.2em; }
+.muted { color: var(--muted); }
+
+/* Dialoge (js/ui/dom.js) */
+.nz-backdrop {
+  position: fixed; inset: 0; z-index: 100; background: rgba(15, 20, 30, .35);
+  display: flex; align-items: center; justify-content: center; padding: 16px;
+}
+.nz-dialog {
+  background: var(--panel); border-radius: var(--radius); box-shadow: var(--shadow-lg);
+  width: min(460px, 100%); max-height: calc(100% - 32px); display: flex; flex-direction: column;
+}
+.nz-dialog > header { padding: 16px 18px 4px; font-weight: 600; font-size: 18px; }
+.nz-dialog > .body { padding: 6px 18px 12px; overflow: auto; }
+.nz-dialog > footer { display: flex; justify-content: flex-end; gap: 8px; padding: 10px 14px 14px; flex-wrap: wrap; }
+
+/* Toasts */
+.nz-toasts { position: fixed; left: 50%; bottom: calc(16px + var(--safe-bottom)); transform: translateX(-50%); z-index: 200;
+  display: flex; flex-direction: column; gap: 8px; align-items: center; pointer-events: none; }
+.nz-toast { background: #1d232b; color: #fff; padding: 10px 16px; border-radius: 20px; box-shadow: var(--shadow); font-size: 15px; max-width: 90vw; }
+.nz-toast.error { background: var(--danger); }
+.nz-toast.ok { background: var(--ok); }
+
+/* Listen / Menüs */
+.nz-menu { position: fixed; z-index: 150; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+  box-shadow: var(--shadow-lg); padding: 6px; min-width: 200px; }
+.nz-menu button { display: flex; width: 100%; align-items: center; gap: 10px; min-height: var(--tap); padding: 0 12px;
+  border: 0; background: none; font: inherit; color: var(--text); border-radius: var(--radius-sm); text-align: left; cursor: pointer; }
+.nz-menu button:hover, .nz-menu button:active { background: var(--panel-2); }
+.nz-menu button.danger { color: var(--danger); }
+.nz-menu hr { border: 0; border-top: 1px solid var(--line); margin: 4px 0; }
