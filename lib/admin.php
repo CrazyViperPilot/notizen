@@ -305,3 +305,34 @@ route('admin_user_lock', 'POST', 'route_admin_user_lock', 'admin');
 route('admin_user_logout', 'POST', 'route_admin_user_logout', 'admin');
 route('admin_user_delete', 'POST', 'route_admin_user_delete', 'admin');
 route('admin_log', 'GET', 'route_admin_log', 'admin');
+
+/** Read-only view of a user's tree (folders and notes, no strokes). Protocol entry 'view_tree'. */
+function route_admin_tree($admin)
+{
+    $userId = param('user', '');
+    if (!ctype_digit($userId) || (int)$userId < 1) fail(400, 'invalid', 'Ungültige Benutzer-ID.');
+    $userId = (int)$userId;
+    $target = one('SELECT id, username FROM {users} WHERE id = ?', [$userId]);
+    if ($target === null) fail(404, 'not_found', 'Benutzer nicht gefunden.');
+    $tree = owner_tree($userId);
+    admin_log($admin['id'], 'view_tree', $userId, 'username=' . $target['username']);
+    return $tree;
+}
+
+/** Pages of one note of a user, with strokes (read only). Protocol entry 'view_note'. */
+function route_admin_pages($admin)
+{
+    $userId = param('user', '');
+    if (!ctype_digit($userId) || (int)$userId < 1) fail(400, 'invalid', 'Ungültige Benutzer-ID.');
+    $userId = (int)$userId;
+    $noteId = param('note', '');
+    if (!uuid_valid($noteId)) fail(400, 'invalid', 'Ungültige Notiz-ID.');
+    $note = one('SELECT * FROM {notes} WHERE id = ? AND user_id = ? AND purged = 0', [$noteId, $userId]);
+    if ($note === null) fail(404, 'not_found', 'Notiz nicht gefunden.');
+    $out = note_with_pages($note);
+    admin_log($admin['id'], 'view_note', $userId, 'note=' . $noteId);
+    return $out;
+}
+
+route('admin_tree', 'GET', 'route_admin_tree', 'admin');
+route('admin_pages', 'GET', 'route_admin_pages', 'admin');
