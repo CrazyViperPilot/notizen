@@ -1,4 +1,5 @@
 <?php
+if (!defined('NZ_ENTRY')) { http_response_code(403); exit; }
 // Loads all modules, keeps the route table and dispatches a request.
 //
 // Modules register routes with route($name, $method, $handler, $access):

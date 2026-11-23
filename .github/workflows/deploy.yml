@@ -87,7 +87,7 @@ jobs:
               "cookie_secure" => true,
               "admin" => ["username" => $u, "password_hash" => password_hash($p, PASSWORD_DEFAULT), "fp" => hash("sha256", $u . "\n" . $p)],
             ];
-            file_put_contents("site/config.php", "<?php\nreturn " . var_export($c, true) . ";\n");
+            file_put_contents("site/config.php", "<?php\nif (!defined(\"NZ_ENTRY\")) { http_response_code(403); exit; }\nreturn " . var_export($c, true) . ";\n");
           '
           php -l site/config.php
           find site -type f | grep -v config.php | sort

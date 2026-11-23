@@ -1,4 +1,5 @@
 <?php
+if (!defined('NZ_ENTRY')) { http_response_code(403); exit; }
 // Schema migrations (migrations/NNN_*.sql) and the first admin from config.php.
 // ensure_schema() costs one query per request when nothing is to do.
 

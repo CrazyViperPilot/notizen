@@ -1,4 +1,5 @@
 <?php
+if (!defined('NZ_ENTRY')) { http_response_code(403); exit; }
 // Vorlage. Auf dem Server erzeugt der Deploy-Workflow config.php aus den Repository-Secrets.
 // Lokal: nach config.php kopieren und anpassen (config.php ist in .gitignore).
 // admin.password_hash: php -r 'echo password_hash("PASSWORT", PASSWORD_DEFAULT);'

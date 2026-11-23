@@ -18,6 +18,7 @@ Regeln:
    Lokale Daten nur über `js/model.js` ändern.
 4. Backend: PHP 7.4-kompatibel (kein `match`, keine benannten Argumente, kein `?->`, keine Union-Typen). Nur die Helfer aus
    `backend/` benutzen (`q()`, `one()`, `all()`, `tx()`, `t()`, `json_out()`, `fail()`, `body()`, `param()`, `require_*()`).
+   Jede neue Datei in `backend/` beginnt mit `<?php` und in der nächsten Zeile `if (!defined('NZ_ENTRY')) { http_response_code(403); exit; }`.
    Jede SQL-Abfrage mit Platzhaltern, jede Datenabfrage auf den berechtigten Benutzer eingeschränkt.
 5. Prüfe vor dem Abschluss: `php -l` für jede PHP-Datei, `node --check` für jede JS-Datei, `node --test test/js/*.test.mjs` und
    `php test/php/run.php` (wenn eine MariaDB läuft; Zugang siehe `config.php`/README) müssen grün sein.

@@ -1,4 +1,5 @@
 <?php
+if (!defined('NZ_ENTRY')) { http_response_code(403); exit; }
 // Read access to the trees of other users (sharing and admin view). Helpers only, no routes.
 //
 // Visibility rules:

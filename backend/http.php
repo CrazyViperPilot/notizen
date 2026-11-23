@@ -1,4 +1,5 @@
 <?php
+if (!defined('NZ_ENTRY')) { http_response_code(403); exit; }
 // HTTP layer: request abstraction (so tests can call dispatch() in-process), errors, cookies, JSON.
 
 class HttpError extends Exception

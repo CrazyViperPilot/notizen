@@ -1,4 +1,5 @@
 <?php
+if (!defined('NZ_ENTRY')) { http_response_code(403); exit; }
 // Sync protocol (docs/ARCHITEKTUR.md, section 5): sync_push, sync_pull, sync_pages, trash purge, daily cleanup, quota.
 //
 // Invariants:

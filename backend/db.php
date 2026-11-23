@@ -1,4 +1,5 @@
 <?php
+if (!defined('NZ_ENTRY')) { http_response_code(403); exit; }
 // Database helpers. SQL uses {table} placeholders that become the prefixed table name, e.g.
 //   one('SELECT * FROM {users} WHERE id = ?', [$id])
 

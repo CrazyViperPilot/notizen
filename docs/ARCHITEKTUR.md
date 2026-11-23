@@ -270,7 +270,10 @@ kollidieren dadurch nicht. Sind die Abstände kleiner als 1e-9, nummeriert der C
   `Content-Security-Policy: default-src 'self'; img-src 'self' data: blob:; script-src 'self'; style-src 'self'; connect-src 'self'; worker-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'`,
   `X-Content-Type-Options: nosniff`, `Referrer-Policy: same-origin`, `Cache-Control: no-store` für die API.
 - Ausgabe: Die UI setzt Benutzertexte nur über `textContent` und Attribute, nie über `innerHTML`.
-- `.htaccess` verweigert den Zugriff auf `backend/`, `migrations/`, `test/`, `docs/`, `config*.php`, `*.md`, `*.sql`.
+- Jede Datei in `backend/` und die `config.php` beginnen mit `if (!defined('NZ_ENTRY')) { http_response_code(403); exit; }`
+  (nur `api.php` und `test/php/run.php` definieren `NZ_ENTRY`), weil der Webspace `.htaccess`-Sperren für PHP nicht zuverlässig anwendet.
+  Der Ordner heißt `backend/`, weil dogado einen Ordner `/lib` im FTP-Wurzelverzeichnis nicht zulässt.
+- `.htaccess` verweigert zusätzlich den Zugriff auf `backend/`, `migrations/`, `test/`, `docs/`, `config*.php`, `*.md`, `*.sql`.
 
 ### 6.1 Konfiguration und Erst-Admin
 `config.php` (vom Deploy erzeugt):

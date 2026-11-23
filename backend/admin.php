@@ -1,4 +1,5 @@
 <?php
+if (!defined('NZ_ENTRY')) { http_response_code(403); exit; }
 // Admin API: user list, create/update/reset/lock/logout/delete users, admin protocol.
 // Protection rules: the last active admin cannot be locked, deleted or demoted; an admin cannot lock or delete himself.
 // Mutations run in tx(). Admin rows are locked first (ORDER BY id, FOR UPDATE), then the target row, so that

@@ -7,6 +7,7 @@ header('X-Content-Type-Options: nosniff');
 header('Referrer-Policy: same-origin');
 header("Content-Security-Policy: default-src 'none'; frame-ancestors 'none'");
 
+define('NZ_ENTRY', 1);
 require __DIR__ . '/backend/bootstrap.php';
 
 $configFile = __DIR__ . '/config.php';

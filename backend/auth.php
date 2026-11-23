@@ -1,4 +1,5 @@
 <?php
+if (!defined('NZ_ENTRY')) { http_response_code(403); exit; }
 // Passwords, sessions, CSRF, login throttling + routes login, logout, me.
 
 const NZ_COOKIE = 'notizen_sid';

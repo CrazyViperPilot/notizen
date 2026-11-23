@@ -1,4 +1,5 @@
 <?php
+if (!defined('NZ_ENTRY')) { http_response_code(403); exit; }
 // Sharing (read only): recipient directory, manage shares, read access to shared trees and pages.
 // Routes: directory, shares_of, share, unshare, shared_tree, shared_pages. Read helpers live in tree.php.
 

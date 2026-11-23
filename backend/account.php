@@ -1,4 +1,5 @@
 <?php
+if (!defined('NZ_ENTRY')) { http_response_code(403); exit; }
 // Own account: password, logout everywhere, account info.
 
 function route_password($u)

@@ -1,4 +1,5 @@
 <?php
+if (!defined('NZ_ENTRY')) { http_response_code(403); exit; }
 // Small helpers shared by all modules.
 
 /** Milliseconds since epoch (UTC). Tests can override via $GLOBALS['NZ_NOW']. */
