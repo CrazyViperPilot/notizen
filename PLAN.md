@@ -5,7 +5,7 @@ Verbindlich: [`PRD.md`](PRD.md) und [`docs/ARCHITEKTUR.md`](docs/ARCHITEKTUR.md)
 Die übrigen Pakete setzt der Implementer (Haiku, Effort *high*) um, jeweils mit einem Auftrag, der Dateien und Schnittstellen nennt.
 Opus prüft jedes Haiku-Paket (Review + Tests), bevor das nächste darauf aufbaut.
 
-Status: **P1 erledigt.** Implementer-Agent: `.claude/agents/implementer.md` (Haiku); beim Start eines Pakets mit Effort *high* aufrufen.
+Status: **P1, P3 erledigt.** Implementer-Agent: `.claude/agents/implementer.md` (Haiku); beim Start eines Pakets mit Effort *high* aufrufen.
 
 ## Reihenfolge und Abhängigkeiten
 
@@ -47,7 +47,7 @@ Liefert die PHP-Helfer, auf denen P2/P3/P4 aufbauen (`db()`, `t()`, `q()`, `one(
 `admin_user_reset`, `admin_user_lock`, `admin_user_logout`, `admin_user_delete`, `admin_log`. Schutzregeln letzter Admin.
 `admin_tree`/`admin_pages` erst nach P4 (nutzen `lib/tree.php`).
 
-### P3 – Sync-Backend (Opus)
+### P3 – Sync-Backend (Opus) ✅
 `lib/sync.php` + Tests: `sync_pull`, `sync_push`, Konflikte, Papierkorb/Purge, Bereinigung, Quota, Isolation.
 
 ### P4 – Teilen-API und Lesezugriff (Haiku)

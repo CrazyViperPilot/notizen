@@ -87,7 +87,8 @@ iPad (Safari / Home-Bildschirm-App)                       phpexpert.de/games/not
 ### 3.1 Gemeinsame Konventionen
 - **IDs** von Ordnern, Notizen und Seiten sind UUIDs v4, die der **Client** erzeugt (`crypto.randomUUID()`).
   Server-IDs (Benutzer, Freigaben, Protokoll) sind `INT UNSIGNED AUTO_INCREMENT`.
-- **Zeitstempel**: überall Millisekunden seit 1970 (UTC) als `BIGINT` bzw. JS-`number`.
+- **Zeitstempel**: überall Millisekunden seit 1970 (UTC) als `BIGINT` bzw. JS-`number`. Der Server begrenzt `updated_at`/`created_at`
+  beim Push auf seine eigene Uhrzeit (ein Gerät mit vorgehender Uhr gewinnt sonst jeden Konflikt).
 - **Seitenkoordinaten**: Einheit 0,1 mm. A4 hoch = 2100 × 2970, quer = 2970 × 2100. Ursprung oben links.
 - **Löschen** = `deleted_at` setzen (Papierkorb). **Endgültig löschen** = `purged = 1` (Inhalt geleert,
   Zeile bleibt als Grabstein, bis die Bereinigung sie entfernt, siehe 5.6).
@@ -159,7 +160,8 @@ Ist `must_change_pw` gesetzt, sind nur `me`, `password` und `logout` erlaubt (40
 | `password` | POST | user | `{old, new}` → `{ok}`; beendet alle **anderen** Sitzungen; bei `must_change_pw` ist `old` nicht nötig |
 | `logout_all` | POST | user | → beendet alle Sitzungen inkl. der eigenen |
 | `account` | GET | user | → `{user, used_bytes, quota_bytes, admins_can_read: true}` |
-| `sync_pull` | GET | user | `since`, `limit` → `{items, cursor, more, reset}` (5.3) |
+| `sync_pull` | GET | user | `since`, `limit` → `{items, cursor, more, reset}` (5.3), Seiten **ohne** `strokes` |
+| `sync_pages` | POST | user | `{ids}` (max. 100) → `{pages}` eigene Seiten **mit** `strokes`; höchstens ~4 MB pro Antwort, fehlende IDs erneut anfragen |
 | `sync_push` | POST | user | `{changes}` → `{results, cursor}` (5.2) |
 | `directory` | GET | user | → `{users:[{id, display_name}]}` aktive Benutzer außer einem selbst |
 | `shares_of` | GET | user | `kind`, `id` → `{shares:[{id, target_id, display_name}]}` (eigenes Element) |
@@ -206,19 +208,23 @@ etwa 8 MB pro Anfrage. Der Server verarbeitet jede Änderung in derselben Transa
      `pos` direkt hinter der Gewinnerseite). So geht keine Handschrift verloren.
    - Gelöscht gegen bearbeitet entscheidet ebenfalls `updated_at`. Ein Löschen setzt `updated_at = deleted_at`.
    - `rev + 1` für die Gewinnerzeile.
-5. **Quota:** Würde `used_bytes` (Summe `pages.bytes` nicht endgültig gelöschter Seiten) das Limit überschreiten → `rejected/quota`
+5. **Quota (HTTP-Code im Ergebnis `quota`):** Würde `used_bytes` (Summe `pages.bytes` nicht endgültig gelöschter Seiten) das Limit überschreiten → `rejected/quota`
    (nur für Seiten, die wachsen).
 
-Antwort: `{"results":[{"id","status":"ok|conflict|rejected","code"?,"row"?:{…Serverstand…}}], "cursor": <users.seq>}`.
-Bei `ok` und `conflict` enthält `row` den aktuellen Serverstand (bei Seiten ohne `strokes`, wenn er dem Push entspricht).
+Antwort: `{"results":[{"id","status":"ok|conflict|rejected","code"?,"message"?,"row"?:{…Serverstand…}}], "cursor": <users.seq>}`
+(`cursor` nur zur Info – der Client darf seinen Pull-Cursor damit **nicht** vorrücken, sonst verpasst er Änderungen anderer Geräte).
+Bei `ok` und `conflict` enthält `row` den aktuellen Serverstand. Seiten-`row` enthält `strokes` nur, wenn der Server-Stand gewonnen hat
+(sonst hat der Client sie schon). `rejected`-Codes: `invalid`, `forbidden`, `orphan`, `cycle`, `quota`, `page_too_large`.
+Konfliktkopien und Kaskaden (Endgültig löschen) kommen beim nächsten Pull.
 Der Client übernimmt `row` und setzt `dirty = 0`, **außer** die lokale Zeile wurde seit dem Absenden erneut geändert.
 Das erkennt er an einem lokalen Zähler `lrev`, den jede lokale Änderung erhöht: Dann bleibt `dirty = 1`, und nur `rev` wird aktualisiert.
 Bei `rejected` behält der Client die Zeile (`dirty = 2` = „hängt“) und zeigt einen Fehler im Status.
 
 ### 5.3 Pull (`sync_pull`)
 `GET api.php?r=sync_pull&since=<cursor>&limit=200` → alle eigenen Zeilen mit `seq > since`, nach `seq` sortiert,
-höchstens `limit` Zeilen bzw. etwa 4 MB. Antwort `{"items":[{"kind","row"}], "cursor":<höchste gelieferte seq>, "more":bool, "reset":bool}`.
-- Lokale Zeile `dirty = 0` → durch `row` ersetzen. Lokale Zeile `dirty ≥ 1` → nur `rev` übernehmen **nicht**
+höchstens `limit` Zeilen (aus einem konsistenten Snapshot). Seiten kommen **ohne** `strokes`, aber mit `bytes`. Der Client holt die
+Striche per `sync_pages` nur für Seiten, deren `rev` neuer ist als die lokale (also nie für seine eigenen gerade hochgeladenen Seiten). Antwort `{"items":[{"kind","row"}], "cursor":<höchste gelieferte seq>, "more":bool, "reset":bool}`.
+- Lokale Zeile `dirty = 0` → durch `row` ersetzen (Seiten: `strokes` behalten, wenn `rev` gleich, sonst nachladen). Lokale Zeile `dirty ≥ 1` → nur `rev` übernehmen **nicht**
   (sie wird beim nächsten Push als Konflikt aufgelöst). Die lokale Zeile bleibt.
 - `row.purged = 1` → lokal endgültig entfernen (inkl. `thumbs`).
 - `reset = true`, wenn `since < users.purge_floor`: Der Client holt alles neu (`since = 0`) und entfernt danach
