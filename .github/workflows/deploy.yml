@@ -112,8 +112,12 @@ jobs:
           set ftp:passive-mode true
           set net:timeout 20
           set net:max-retries 2
+          pwd
+          cls -1 -F ${FTP_DIR}
+          cls -1 -F ${FTP_DIR}notizen
           mkdir -p -f ${FTP_DIR}notizen
-          mirror --reverse --no-perms --verbose site/ ${FTP_DIR}notizen/
+          mirror --reverse --no-perms --verbose site ${FTP_DIR}notizen
+          cls -1 -F ${FTP_DIR}notizen
           bye
           EOF
 
