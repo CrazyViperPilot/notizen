@@ -5,7 +5,7 @@ Verbindlich: [`PRD.md`](PRD.md) und [`docs/ARCHITEKTUR.md`](docs/ARCHITEKTUR.md)
 Die übrigen Pakete setzt der Implementer (Haiku, Effort *high*) um, jeweils mit einem Auftrag, der Dateien und Schnittstellen nennt.
 Opus prüft jedes Haiku-Paket (Review + Tests), bevor das nächste darauf aufbaut.
 
-Status: **P1, P2, P3 erledigt; P5 umgesetzt (iPad-Test über https://phpexpert.de/notizen/labor.html).** Implementer-Agent: `.claude/agents/implementer.md` (Haiku); beim Start eines Pakets mit Effort *high* aufrufen.
+Status: **P1, P2, P3, P6 erledigt; P5 umgesetzt (iPad-Test über https://phpexpert.de/notizen/labor.html).** Implementer-Agent: `.claude/agents/implementer.md` (Haiku); beim Start eines Pakets mit Effort *high* aufrufen.
 
 ## Reihenfolge und Abhängigkeiten
 
@@ -60,7 +60,7 @@ in `lib/admin.php`. Tests inkl. Isolation.
 Testseite `test/ink.html` (Fläche ohne Backend), Tests `test/js/{codec,stroke,paper}.test.mjs`.
 Abnahme: auf dem iPad gegenprüfen (Latenz, Handballen, Zoom, Speicher bei 50 Seiten).
 
-### P6 – Client-Daten und Sync (Opus)
+### P6 – Client-Daten und Sync (Opus) ✅
 `js/api.js`, `js/db.js`, `js/model.js`, `js/sync.js`, reine Merge-Funktionen + `test/js/sync.test.mjs`.
 
 ### P7 – Login, Konto, Status, App-Rahmen (Haiku)
