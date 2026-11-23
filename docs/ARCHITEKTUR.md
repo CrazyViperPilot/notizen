@@ -25,7 +25,7 @@ iPad (Safari / Home-Bildschirm-App)                       phpexpert.de/games/not
   ohne CORS, und Safaris Tracking-Schutz greift nicht.
 - **Kein Build-Schritt:** ES-Module, direkt ausgeliefert. Keine externen Bibliotheken, Fonts oder CDNs.
 - **PHP 7.4-kompatibel** (kein `match`, keine benannten Argumente, kein Nullsafe-Operator, keine Union-Typen, keine
-  `readonly`-Eigenschaften), MySQL 5.7+ / MariaDB 10.3+ (kein `JSON`-Spaltentyp, keine CTEs nötig), InnoDB, `utf8mb4`.
+  `readonly`-Eigenschaften), Produktiv MySQL 8 (Port per Secret, z. B. 3307), lokal/CI MariaDB 10.6+ bzw. MySQL 8; also kompatibel zu beiden (kein `JSON`-Spaltentyp, keine CTEs nötig), InnoDB, `utf8mb4`.
 
 ## 2. Ordnerstruktur
 
@@ -270,7 +270,7 @@ kollidieren dadurch nicht. Sind die Abstände kleiner als 1e-9, nummeriert der C
 `config.php` (vom Deploy erzeugt):
 ```php
 <?php return [
-  'db' => ['host' => '…', 'name' => '…', 'user' => '…', 'pass' => '…', 'prefix' => 'notizen_'],
+  'db' => ['host' => '…', 'port' => 3306, 'name' => '…', 'user' => '…', 'pass' => '…', 'prefix' => 'notizen_'],
   'base_path' => '/games/notizen/',
   'cookie_secure' => true,
   'admin' => ['username' => '…', 'password_hash' => '<bcrypt>', 'fp' => '<sha256(username . "\n" . passwort)>'],

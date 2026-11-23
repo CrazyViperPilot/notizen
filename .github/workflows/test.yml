@@ -1,0 +1,54 @@
+# Tests bei jedem Push und Pull Request: PHP 7.4 + 8.3 gegen MySQL 8 (wie auf dem Server), JS-Tests mit Node.
+name: Test
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  php:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ["7.4", "8.3"]
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: notizen_test
+        ports: ["3306:3306"]
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -proot"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: pdo_mysql, mbstring
+          coverage: none
+      - name: Syntax
+        run: for f in $(git ls-files '*.php'); do php -l "$f" > /dev/null || exit 1; done
+      - name: PHP-Tests
+        env:
+          NZ_TEST_DB_HOST: 127.0.0.1
+          NZ_TEST_DB_PORT: "3306"
+          NZ_TEST_DB_NAME: notizen_test
+          NZ_TEST_DB_USER: root
+          NZ_TEST_DB_PASS: root
+        run: php test/php/run.php
+
+  js:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+      - name: Syntax
+        run: for f in $(git ls-files '*.js' '*.mjs'); do node --check "$f" || exit 1; done
+      - name: JS-Tests
+        run: if ls test/js/*.test.mjs > /dev/null 2>&1; then node --test test/js/; else echo "Noch keine JS-Tests."; fi

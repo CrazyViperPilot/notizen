@@ -5,7 +5,7 @@ Verbindlich: [`PRD.md`](PRD.md) und [`docs/ARCHITEKTUR.md`](docs/ARCHITEKTUR.md)
 Die übrigen Pakete setzt der Implementer (Haiku, Effort *high*) um, jeweils mit einem Auftrag, der Dateien und Schnittstellen nennt.
 Opus prüft jedes Haiku-Paket (Review + Tests), bevor das nächste darauf aufbaut.
 
-Status: **Planung, noch nichts umgesetzt.** Implementer-Agent: `.claude/agents/implementer.md` (Haiku); beim Start eines Pakets mit Effort *high* aufrufen.
+Status: **P1 erledigt.** Implementer-Agent: `.claude/agents/implementer.md` (Haiku); beim Start eines Pakets mit Effort *high* aufrufen.
 
 ## Reihenfolge und Abhängigkeiten
 
@@ -24,12 +24,23 @@ P6 Client-Daten+Sync (Opus) ◀──────────┼─────�
 
 ## Pakete
 
-### P1 – Gerüst und Backend-Kern (Opus)
+### P1 – Gerüst und Backend-Kern (Opus) ✅
 `api.php`, `lib/bootstrap.php`, `lib/http.php`, `lib/db.php`, `lib/migrate.php`, `lib/auth.php`, `lib/account.php`, `lib/util.php`,
 `migrations/001_init.sql`, `config.example.php`, `.htaccess`, `test/php/run.php` (Testrahmen + Auth-Tests),
 lokale MariaDB-Einrichtung. Routen: `ping`, `login`, `logout`, `me`, `password`, `logout_all`, `account`.
 Liefert die PHP-Helfer, auf denen P2/P3/P4 aufbauen (`db()`, `t()`, `q()`, `one()`, `all()`, `tx()`, `json_out()`, `fail()`, `body()`,
 `param()`, `require_user()`, `require_admin()`, `require_csrf()`, `user_public()`, `admin_log()`, `now_ms()`, `uuid_valid()`).
+
+**Stand P1 (für P2–P4 verbindlich):**
+- Routen registriert jedes Modul selbst: `route($name, 'GET'|'POST', $handler, 'none'|'user'|'user_any'|'admin')`. Handler bekommen
+  die Benutzerzeile (`$u['id']`, `$u['role']`, …) und geben ein Array zurück (wird zu `{"ok":true, …}`). Fehler: `fail($status, $code, $message)`.
+  CSRF/Origin prüft `dispatch()` automatisch für jedes `POST`. `lib/bootstrap.php` lädt `sync`, `tree`, `share`, `admin` automatisch, sobald die Datei existiert.
+- SQL mit Tabellen-Platzhaltern: `one('SELECT * FROM {users} WHERE id = ?', [$id])`; weitere Helfer `val()`, `field($name)` (JSON-Body),
+  `clean_text($v, $max, $label)`, `gen_temp_password()`, `password_problem($p)`, `validate_username($u)`, `hash_password($p)`,
+  `end_sessions_for($userId)`.
+- Tests: `test/php/<thema>_test.php` mit Funktionen `test_*`, Helfer `Client` (`->login()`, `->get()`, `->post()`), `make_user()`,
+  `user_client()`, `assert_eq()`, `assert_true()`, `assert_status($status, $res, $code)`, Admin aus `T_ADMIN_USER`/`T_ADMIN_PASS`.
+  Lauf: `NZ_TEST_DB_USER=nz NZ_TEST_DB_PASS=nz php test/php/run.php [filter]`.
 
 ### P2 – Admin-API (Haiku)
 `lib/admin.php` + Tests in `test/php/admin_test.php`. Routen `admin_users`, `admin_user_create`, `admin_user_update`,
@@ -84,5 +95,5 @@ Playwright-Tests (`test/e2e/`), Sicherheits-Review, Leistungstest (2.000 Striche
 
 ## Voraussetzungen beim Betreiber (vor dem ersten Deploy)
 1. Bei dogado eine MySQL/MariaDB-Datenbank anlegen.
-2. Repository-Secrets in **diesem** Repo setzen: `FTP_SERVER`, `FTP_USER`, `FTP_PASSWORD` (wie im Repo `games`), `NOTIZEN_DB_HOST`, `NOTIZEN_DB_NAME`, `NOTIZEN_DB_USER`, `NOTIZEN_DB_PASSWORD`,
+2. Repository-Secrets in **diesem** Repo setzen: `FTP_SERVER`, `FTP_USER`, `FTP_PASSWORD` (wie im Repo `games`), `NOTIZEN_DB_HOST`, `NOTIZEN_DB_PORT`, `NOTIZEN_DB_NAME`, `NOTIZEN_DB_USER`, `NOTIZEN_DB_PASSWORD`,
    `NOTIZEN_ADMIN_USER`, `NOTIZEN_ADMIN_PASSWORD`.

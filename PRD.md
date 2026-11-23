@@ -123,7 +123,7 @@ Das erste Admin-Konto kommt aus GitHub-Secrets (Abschnitt 9). Weitere Admins kan
 
 ## 9. Betrieb
 - Deploy per GitHub Actions (FTP) aus diesem Repo nach `phpexpert.de/games/notizen/` (gleicher FTP-Zugang wie die Spiele, wie bei Frankfurtopoly).
-- **Secrets** (in diesem Repo): FTP-Zugang (`FTP_SERVER`, `FTP_USER`, `FTP_PASSWORD`, wie im Repo `games`), MySQL-Zugang (`NOTIZEN_DB_HOST`, `NOTIZEN_DB_NAME`, `NOTIZEN_DB_USER`, `NOTIZEN_DB_PASSWORD`) und
+- **Secrets** (in diesem Repo): FTP-Zugang (`FTP_SERVER`, `FTP_USER`, `FTP_PASSWORD`, wie im Repo `games`), MySQL-Zugang (`NOTIZEN_DB_HOST`, `NOTIZEN_DB_PORT`, `NOTIZEN_DB_NAME`, `NOTIZEN_DB_USER`, `NOTIZEN_DB_PASSWORD`) und
   Erst-Admin (`NOTIZEN_ADMIN_USER`, `NOTIZEN_ADMIN_PASSWORD`). Wird `NOTIZEN_ADMIN_PASSWORD` geändert, setzt der
   nächste Deploy das Passwort dieses Admins zurück. Das ist der Notfallzugang, falls man sich ausgesperrt hat.
 - Die Datenbank-Tabellen legt die App beim ersten Aufruf nach einem Deploy selbst an bzw. aktualisiert sie (Migrationen).
