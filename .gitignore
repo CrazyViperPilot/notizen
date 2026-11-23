@@ -1,0 +1,4 @@
+# Vom Deploy erzeugt bzw. lokal angelegt
+config.php
+node_modules/
+test-results/
