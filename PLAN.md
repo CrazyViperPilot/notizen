@@ -5,7 +5,7 @@ Verbindlich: [`PRD.md`](PRD.md) und [`docs/ARCHITEKTUR.md`](docs/ARCHITEKTUR.md)
 Die übrigen Pakete setzt der Implementer (Haiku, Effort *high*) um, jeweils mit einem Auftrag, der Dateien und Schnittstellen nennt.
 Opus prüft jedes Haiku-Paket (Review + Tests), bevor das nächste darauf aufbaut.
 
-Status: **P1–P4, P6 erledigt; P5 umgesetzt (iPad-Test über https://phpexpert.de/notizen/labor.html).** Implementer-Agent: `.claude/agents/implementer.md` (Haiku); beim Start eines Pakets mit Effort *high* aufrufen.
+Status: **P1–P13 umgesetzt und live unter https://phpexpert.de/notizen/. Offen: P5-Abnahme auf dem iPad, P14 (E2E-Suite, Review, Feinschliff).**
 
 ## Reihenfolge und Abhängigkeiten
 
@@ -86,7 +86,7 @@ mit Download als Ausweichlösung, `test/js/pdf.test.mjs`.
 `admin.html`, `css/admin.css`, `js/admin/admin.js`: Liste, Anlegen (Einmal-Passwort einmalig anzeigen), Bearbeiten,
 Reset, Sperren, Sitzungen beenden, Löschen mit Bestätigung, Notizen einsehen (Baum + `surface` `readOnly`), Protokoll.
 
-### P13 – PWA, Deploy, Startseite (Opus)
+### P13 – PWA, Deploy, Startseite (Opus) ✅ (Startseiten-Karte im Repo games auf Branch ccr-9bb127df-e4sz5r, Merge nach main offen)
 `manifest.json`, `sw.js`, Icons, `.github/workflows/test.yml` (Tests bei jedem Push), `.github/workflows/deploy.yml`
 (MariaDB-Service, Tests, Upload, config.php, Live-Check), `README.md`; im Repo `games`: Karte auf der Startseite + Tabellenzeile im README.
 
