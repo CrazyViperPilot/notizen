@@ -17,6 +17,9 @@ export function setCsrf(token) {
 }
 
 async function request(method, route, params, body, retried = false) {
+  if (method === 'POST' && !csrf && route !== 'login') {
+    try { setCsrf((await send('GET', 'me', null, null)).csrf); } catch { /* the POST below reports the real error */ }
+  }
   try {
     return await send(method, route, params, body);
   } catch (e) {

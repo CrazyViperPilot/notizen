@@ -94,3 +94,11 @@ test('toChange strips local fields, base_rev from rev', () => {
   for (const k of ['dirty', 'lrev', 'need', 'rev', 'seq', 'error', 'id']) assert.ok(!(k in c.data), k);
   assert.equal(c.data.strokes, '[]');
 });
+
+import { sortFoldersParentsFirst } from '../../js/sync.js';
+
+test('folders are pushed parents first', () => {
+  const all = [{ id: 'c', parent_id: 'b' }, { id: 'a', parent_id: null }, { id: 'b', parent_id: 'a' }, { id: 'x', parent_id: 'gone' }];
+  const order = sortFoldersParentsFirst([all[0], all[2], all[1]], all).map((f) => f.id);
+  assert.deepEqual(order, ['a', 'b', 'c']);
+});

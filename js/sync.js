@@ -51,6 +51,17 @@ export function applyPushResult(kind, local, sentLrev, result) {
   return { action: 'put', row: merged };
 }
 
+/** Orders folders by depth (root first), using all local folders to compute the depth. */
+export function sortFoldersParentsFirst(rows, allFolders) {
+  const parent = new Map(allFolders.map((f) => [f.id, f.parent_id]));
+  const depth = (id) => {
+    let d = 0;
+    for (let cur = parent.get(id); cur && d < 200; cur = parent.get(cur)) d++;
+    return d;
+  };
+  return rows.map((r) => [depth(r.id), r]).sort((a, b) => a[0] - b[0]).map((x) => x[1]);
+}
+
 /** Change payload for sync_push. */
 export function toChange(kind, row) {
   const data = {};
@@ -148,7 +159,10 @@ class SyncEngine {
     return this.db.tx(['folders', 'notes', 'pages'], 'readonly', async (h) => {
       const out = [];
       for (const kind of KINDS) {
-        for (const row of await h[STORE[kind]].byIndex('dirty', 1)) {
+        let rows = await h[STORE[kind]].byIndex('dirty', 1);
+        // Parents before children, also across batches: otherwise the server cannot attach a subfolder yet.
+        if (kind === 'folder') rows = sortFoldersParentsFirst(rows, await h.folders.all());
+        for (const row of rows) {
           if (kind === 'page' && typeof row.strokes !== 'string') continue; // not loaded yet: never push blank ink
           out.push({ kind, row });
         }

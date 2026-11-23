@@ -63,23 +63,23 @@ Abnahme: auf dem iPad gegenprüfen (Latenz, Handballen, Zoom, Speicher bei 50 Se
 ### P6 – Client-Daten und Sync (Opus) ✅
 `js/api.js`, `js/db.js`, `js/model.js`, `js/sync.js`, reine Merge-Funktionen + `test/js/sync.test.mjs`.
 
-### P7 – Login, Konto, Status, App-Rahmen (Haiku)
+### P7 – Login, Konto, Status, App-Rahmen (Haiku) ✅ (App-Rahmen js/app.js von Opus)
 `index.html`, `css/app.css` (Grundlayout), `js/app.js` (Router, Login-Zustand, Offline-Start über `notizen:lastUser`),
 `js/ui/dom.js`, `js/ui/login.js` (inkl. erzwungenem Passwortwechsel), `js/ui/account.js`, `js/ui/status.js`.
 
-### P8 – Bibliothek (Haiku)
+### P8 – Bibliothek (Haiku) ✅
 `js/ui/library.js`, `js/ui/tree.js`, `js/ui/dialogs.js` (Neu/Umbenennen/Verschieben/Löschen, Neue Notiz mit Papierwahl),
 `js/ui/trash.js`, Suche, Vorschaubilder (`thumbs`).
 
-### P9 – Editor-UI (Haiku)
+### P9 – Editor-UI (Haiku) ✅
 `js/ui/editor.js`, `js/ui/toolbar.js`: Werkzeuge, Farben, Stärken, Undo/Redo, Seiten hinzufügen/löschen, Papier ändern,
 Titel, Zurück, Verdrahtung `surface` ↔ `model`.
 
-### P10 – PDF-Export und Backup (Haiku)
+### P10 – PDF-Export und Backup (Haiku) ✅
 `js/export/pdf.js` (Vektor-PDF nach Vorgabe in der Architektur), `js/export/backup.js`, Teilen über `navigator.share({files})`
 mit Download als Ausweichlösung, `test/js/pdf.test.mjs`.
 
-### P11 – Teilen-UI (Haiku)
+### P11 – Teilen-UI (Haiku) ✅
 `js/ui/share.js` (Dialog), `js/ui/shared.js` („Mit mir geteilt“, Leseansicht mit `surface` `readOnly`, Offline-Zwischenspeicher `shared`).
 
 ### P12 – Admin-UI (Haiku) ✅
