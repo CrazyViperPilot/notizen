@@ -121,6 +121,10 @@ Das erste Admin-Konto kommt aus GitHub-Secrets (Abschnitt 9). Weitere Admins kan
 - Schutzregeln: Der letzte aktive Admin kann nicht gesperrt, gelöscht oder zum Benutzer herabgestuft werden.
   Ein Admin kann sich nicht selbst löschen.
 
+## 8a. Spielwiese (`/notizen/labor.html`)
+- Bleibt dauerhaft: Zeichenfläche ohne Konto und Server zum Ausprobieren des Stifts (z. B. auf einem neuen Tablet) und zur Fehlersuche.
+- Vier feste Seiten (liniert, kariert, gepunktet, blanko), speichert nur lokal im Browser, kein Abgleich.
+
 ## 9. Betrieb
 - Deploy per GitHub Actions (FTP) aus diesem Repo nach `phpexpert.de/notizen/` (eigener FTP-Zugang, Login startet im Web-Ordner /notizen).
 - **Secrets** (in diesem Repo): FTP-Zugang (`FTP_SERVER`, `FTP_USER`, `FTP_PASSWORD`; Login startet im Web-Ordner `/notizen`), MySQL-Zugang (`NOTIZEN_DB_HOST`, `NOTIZEN_DB_PORT`, `NOTIZEN_DB_NAME`, `NOTIZEN_DB_USER`, `NOTIZEN_DB_PASSWORD`) und

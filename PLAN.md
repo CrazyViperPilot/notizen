@@ -55,7 +55,7 @@ Liefert die PHP-Helfer, auf denen P2/P3/P4 aufbauen (`db()`, `t()`, `q()`, `one(
 `backend/share.php` (`directory`, `shares_of`, `share`, `unshare`, `shared_tree`, `shared_pages`), danach `admin_tree`/`admin_pages`
 in `backend/admin.php`. Tests inkl. Isolation.
 
-### P5 – Ink-Kern (Opus) 🟡 umgesetzt, Abnahme auf dem iPad offen (`labor.html`)
+### P5 – Ink-Kern (Opus) 🟡 umgesetzt, Abnahme auf dem iPad offen (`labor.html` bleibt dauerhaft als Spielwiese, siehe PRD 8a)
 `js/config.js`, `js/ink/codec.js`, `js/ink/stroke.js`, `js/ink/paper.js`, `js/ink/render.js`, `js/ink/surface.js`,
 Testseite `test/ink.html` (Fläche ohne Backend), Tests `test/js/{codec,stroke,paper}.test.mjs`.
 Abnahme: auf dem iPad gegenprüfen (Latenz, Handballen, Zoom, Speicher bei 50 Seiten).
