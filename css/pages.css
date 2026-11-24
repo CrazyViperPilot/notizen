@@ -1,0 +1,66 @@
+/* Seitenübersicht (js/ui/pages.js): Vollbild über dem Editor, Raster aus Miniaturen. Tippflächen mindestens 44 px. */
+
+.pov {
+  position: fixed; inset: 0; z-index: 60;
+  display: flex; flex-direction: column;
+  background: var(--bg); color: var(--text);
+  -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
+}
+
+/* Kopfzeile: Titel, Anzahl, Fertig (safe-area oben und an den Seiten) */
+.pov-head {
+  flex: 0 0 auto; display: flex; align-items: center; gap: 10px;
+  padding: calc(8px + var(--safe-top)) calc(12px + env(safe-area-inset-right, 0px)) 8px calc(16px + env(safe-area-inset-left, 0px));
+  background: var(--panel); border-bottom: 1px solid var(--line);
+}
+.pov-title { margin: 0; font-size: 20px; font-weight: 600; }
+.pov-count { color: var(--muted); font-size: 15px; font-variant-numeric: tabular-nums; }
+.pov-spacer { flex: 1 1 auto; }
+.pov-done { min-height: var(--tap); }
+
+/* Raster */
+.pov-scroll {
+  flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch; touch-action: pan-y;
+  padding: 16px calc(16px + env(safe-area-inset-right, 0px)) calc(24px + var(--safe-bottom)) calc(16px + env(safe-area-inset-left, 0px));
+}
+.pov-grid {
+  position: relative; display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 16px 14px;
+}
+
+/* Kachel: Miniatur (Tippen = öffnen) + Fußzeile mit Seitenname und Menü */
+.pov-cell {
+  position: relative; display: flex; flex-direction: column; gap: 2px; min-width: 0;
+  touch-action: pan-y; transition: transform .12s ease-out;
+}
+.pov-cell.dragging { z-index: 5; transition: none; will-change: transform; }
+.pov-tile {
+  display: block; overflow: hidden; cursor: pointer;
+  background: #fff; border: 2px solid transparent; border-radius: 6px; box-shadow: var(--shadow);
+  touch-action: pan-y;
+}
+.pov-cell.current .pov-tile { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft), var(--shadow); }
+.pov-cell.dragging .pov-tile { box-shadow: var(--shadow-lg); }
+.pov-canvas { display: block; width: 100%; height: auto; pointer-events: none; }
+.pov-tile:focus-visible, .pov-more:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+.pov-foot { display: flex; align-items: center; justify-content: space-between; min-height: var(--tap); padding-left: 4px; }
+.pov-label { font-size: 15px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.pov-cell.current .pov-label { color: var(--accent); font-weight: 600; }
+.pov-more {
+  min-width: var(--tap); min-height: var(--tap); padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 0; border-radius: var(--radius-sm); background: none; color: var(--text);
+  font: inherit; font-size: 22px; line-height: 1; cursor: pointer;
+  touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+}
+.pov-more:active { background: var(--panel-2); }
+
+/* Einfügemarke beim Umsortieren (Position per JS in Rasterkoordinaten) */
+.pov-marker {
+  position: absolute; z-index: 6; width: 4px; border-radius: 2px;   /* über der angehobenen Kachel (z 5) */
+  background: var(--accent); box-shadow: 0 0 0 2px rgba(255, 255, 255, .9);
+  pointer-events: none;
+}
