@@ -4,6 +4,7 @@
 
 import { PEN_COLORS, PEN_COLOR_NAMES, PEN_WIDTHS, HL_COLORS, HL_COLOR_NAMES, PAPERS, PAPER_NAMES, isHexColor, DEFAULT_CUSTOM_COLOR, DEFAULT_CUSTOM_HL_COLOR } from '../config.js';
 import { h, menu, promptText } from './dom.js';
+import { fullscreenSupported, isFullscreen, toggleFullscreen, onFullscreenChange } from './fullscreen.js';
 
 const PREFS_KEY = 'notizen:prefs';
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -16,6 +17,8 @@ const ICONS = {
   highlighter: [{ d: 'M5 21h14', w: 5, o: 0.45 }, { d: 'M8 15l6.8-8.6 3.2 2.5L11.2 17.5z' }],
   eraser: [{ d: 'M4.5 16.5L12 9l5 5-5.5 5.5H8.5z' }, { d: 'M11 19.5h9' }],
   lasso: [{ d: 'M12 4c4.4 0 8 2.2 8 5s-3.6 5-8 5-8-2.2-8-5 3.6-5 8-5z', dash: true }, { d: 'M7 13c-1 2 0 4 2 4.5s2.5 2 1.5 3.5' }],
+  fsOn: [{ d: 'M4 9V4h5' }, { d: 'M15 4h5v5' }, { d: 'M20 15v5h-5' }, { d: 'M9 20H4v-5' }],
+  fsOff: [{ d: 'M9 4v5H4' }, { d: 'M15 4v5h5' }, { d: 'M20 15h-5v5' }, { d: 'M4 15h5v5' }],
 };
 
 function icon(kind) {
@@ -145,13 +148,28 @@ export function createToolbar({ onTool, onUndo, onRedo, onBack, onTitle, onPageM
     type: 'button', className: 'tb-btn tb-quiz', title: 'Vokabeln abfragen', 'aria-label': 'Vokabeln abfragen',
     'aria-pressed': 'false', hidden: true, text: 'Abfragen', onclick: () => onQuiz(),
   });
+  // Vollbild: nur wo der Browser es kann (Windows, Android); unter iOS bleibt der Button verborgen.
+  const fsBtn = h('button', {
+    type: 'button', className: 'tb-btn tb-fs', hidden: !fullscreenSupported(), 'aria-pressed': 'false',
+    onclick: () => toggleFullscreen(),
+  });
+  const renderFs = () => {
+    const on = isFullscreen();
+    const label = on ? 'Vollbild beenden' : 'Vollbild';
+    fsBtn.title = label;
+    fsBtn.setAttribute('aria-label', label);
+    fsBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    fsBtn.replaceChildren(icon(on ? 'fsOff' : 'fsOn'));
+  };
+  renderFs();
+  const offFs = onFullscreenChange(renderFs);
   const infoEl = h('span', { className: 'tb-info', 'aria-live': 'polite' });
   const styleEl = h('div', { className: 'tb-group tb-style' });
 
   const el = h('div', { className: 'tb', role: 'toolbar', 'aria-label': 'Werkzeuge' },
     h('div', { className: 'tb-left' }, backBtn, titleBtn),
     h('div', { className: 'tb-group tb-tools' }, toolBtns),
-    h('div', { className: 'tb-group tb-right' }, undoBtn, redoBtn, addBtn, quizBtn, menuBtn, infoEl),
+    h('div', { className: 'tb-group tb-right' }, undoBtn, redoBtn, addBtn, quizBtn, fsBtn, menuBtn, infoEl),
     styleEl);
 
   function render() {
@@ -326,6 +344,7 @@ export function createToolbar({ onTool, onUndo, onRedo, onBack, onTitle, onPageM
     getTool: current,
     destroy() {
       document.removeEventListener('keydown', onKey);
+      offFs();
     },
   };
 }
