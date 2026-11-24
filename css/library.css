@@ -101,6 +101,20 @@
 .tile.note .thumb-img { display: block; width: 100%; height: 100%; object-fit: contain; opacity: 0; transition: opacity .2s; }
 .tile.note .thumb-img[src] { opacity: 1; }
 .tile.note .meta { padding: 10px 12px 0; min-width: 0; }
+.fav-star {
+  position: absolute; top: 6px; left: 6px; z-index: 1; width: 30px; height: 30px;
+  display: inline-flex; align-items: center; justify-content: center; border-radius: 50%;
+  background: rgba(241, 243, 246, .94); color: #c98a00; font-size: 17px; line-height: 1;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .15); pointer-events: none;
+}
+
+/* Reihen „Favoriten“ und „Zuletzt geöffnet“ oben auf der obersten Ebene: horizontal wischbar. */
+.shelf-row {
+  display: flex; gap: 16px; overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch;
+  scroll-snap-type: x proximity; overscroll-behavior-x: contain;
+  margin: 0 -4px; padding: 4px 4px 14px;
+}
+.shelf-row .tile.note { flex: 0 0 150px; width: 150px; scroll-snap-align: start; }
 
 .more {
   position: absolute; top: 6px; right: 6px; z-index: 1; width: var(--tap); height: var(--tap);

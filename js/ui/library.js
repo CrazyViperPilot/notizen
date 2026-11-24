@@ -251,6 +251,8 @@ export async function mountLibrary(el, params, ctx) {
     st.searching = st.q.trim() !== '';
     let subFolders;
     let notes;
+    let pinned = null;   // Favoriten (nur oberste Ebene ohne Suche), sonst null
+    let recent = null;   // Zuletzt geöffnet (wie pinned)
     if (st.searching) {
       const r = await model.search(st.q);
       if (!alive || seq !== loadSeq) return;
@@ -258,13 +260,21 @@ export async function mountLibrary(el, params, ctx) {
       notes = r.notes;
     } else {
       subFolders = folders.filter((f) => (f.parent_id || null) === st.folderId);
-      notes = await model.listNotes(st.folderId);
+      const top = !st.folderId;
+      const [list, pins, recs] = await Promise.all([
+        model.listNotes(st.folderId),
+        top ? model.listPinned() : null,
+        top ? model.listRecent() : null,
+      ]);
       if (!alive || seq !== loadSeq) return;
+      notes = list;
+      pinned = pins;
+      recent = recs;
     }
     if (!expandedOnce) { expandedOnce = true; expandAncestors(); }
     renderBar();
     renderTree();
-    renderContent(subFolders, sortNotes(notes, st.sort));
+    renderContent(subFolders, sortNotes(notes, st.sort), pinned && sortNotes(pinned, st.sort), recent);
   }
 
   function renderBar() {
@@ -348,11 +358,15 @@ export async function mountLibrary(el, params, ctx) {
   }
 
   // ── Inhalt ──
-  function renderContent(subFolders, notes) {
+  /** pinned/recent: Notizlisten für die Reihen oben (nur oberste Ebene ohne Suche), sonst null. */
+  function renderContent(subFolders, notes, pinned, recent) {
     const g = ++renderGen;
-    const tiles = [];
+    const slots = new Map();   // noteId → {note, imgs}: eine Notiz kann in mehreren Reihen vorkommen, Vorschau wird einmal geladen
     const searching = st.searching;
     const blocks = [];
+    const hasShelf = (pinned && pinned.length) || (recent && recent.length);
+    if (pinned && pinned.length) blocks.push(shelf('Favoriten', pinned, slots));
+    if (recent && recent.length) blocks.push(shelf('Zuletzt geöffnet', recent, slots));
     if (subFolders.length) {
       blocks.push(h('section', { className: 'group' },
         searching ? h('h2', { className: 'group-title', text: 'Ordner' }) : null,
@@ -361,20 +375,26 @@ export async function mountLibrary(el, params, ctx) {
     if (notes.length) {
       blocks.push(h('section', { className: 'group' },
         searching ? h('h2', { className: 'group-title', text: 'Notizen' }) : null,
-        h('div', { className: 'grid' }, notes.map((n) => noteTile(n, tiles)))));
+        h('div', { className: 'grid' }, notes.map((n) => noteTile(n, slots)))));
     }
-    if (!subFolders.length && !notes.length) {
+    if (!subFolders.length && !notes.length && !hasShelf) {
       blocks.push(h('div', { className: 'empty' },
         h('div', { className: 'empty-ico', text: searching ? '🔍' : '✍️', 'aria-hidden': 'true' }),
         h('p', { text: searching ? `Keine Treffer für „${st.q.trim()}“.` : 'Noch keine Notizen – tippe auf + Notiz' })));
     }
     content.replaceChildren(...blocks);
     // Vorschaubilder, die nicht mehr angezeigt werden, freigeben.
-    const shown = new Set(notes.map((n) => n.id));
     for (const [id, u] of urlOf) {
-      if (!shown.has(id)) { URL.revokeObjectURL(u); urlOf.delete(id); }
+      if (!slots.has(id)) { URL.revokeObjectURL(u); urlOf.delete(id); }
     }
-    fillThumbs(tiles, g);
+    fillThumbs([...slots.values()], g);
+  }
+
+  /** Horizontal scrollbare Reihe („Favoriten“, „Zuletzt geöffnet“) mit normalen Notiz-Kacheln. */
+  function shelf(title, list, slots) {
+    return h('section', { className: 'group shelf' },
+      h('h2', { className: 'group-title', text: title }),
+      h('div', { className: 'shelf-row' }, list.map((n) => noteTile(n, slots))));
   }
 
   function setThumbUrl(id, url) {
@@ -383,15 +403,16 @@ export async function mountLibrary(el, params, ctx) {
     if (old && old !== url) URL.revokeObjectURL(old);
   }
 
-  function fillThumbs(tiles, g) {
+  function fillThumbs(slots, g) {
     let idx = 0;
     const worker = async () => {
-      while (alive && g === renderGen && idx < tiles.length) {
-        const { note, img } = tiles[idx++];
+      while (alive && g === renderGen && idx < slots.length) {
+        const { note, imgs } = slots[idx++];
         const url = await noteThumb(model, note);
         if (!url) continue;
-        if (!alive || g !== renderGen || !img.isConnected) { URL.revokeObjectURL(url); continue; }
-        img.src = url;
+        const live = imgs.filter((img) => img.isConnected);
+        if (!alive || g !== renderGen || !live.length) { URL.revokeObjectURL(url); continue; }
+        for (const img of live) img.src = url;
         setThumbUrl(note.id, url);
       }
     };
@@ -415,7 +436,7 @@ export async function mountLibrary(el, params, ctx) {
     return tile;
   }
 
-  function noteTile(note, tiles) {
+  function noteTile(note, slots) {
     // Querformat-Notizen bekommen einen Querformat-Rahmen (das Bild bestimmt das Verhältnis).
     const img = h('img', { className: 'thumb-img', alt: '', onload: (e) => {
       const box = e.currentTarget.parentElement;
@@ -423,9 +444,13 @@ export async function mountLibrary(el, params, ctx) {
     } });
     const reuse = urlOf.get(note.id);
     if (reuse) img.src = reuse;
-    tiles.push({ note, img });
+    let slot = slots.get(note.id);
+    if (!slot) { slot = { note, imgs: [] }; slots.set(note.id, slot); }
+    slot.imgs.push(img);
     const tile = h('div', { className: 'tile note', role: 'button', tabIndex: 0, 'aria-label': 'Notiz ' + note.title },
-      h('div', { className: 'thumb' }, img, moreButton('note', note)),
+      h('div', { className: 'thumb' }, img,
+        note.pinned ? h('span', { className: 'fav-star', role: 'img', 'aria-label': 'Favorit', text: '★' }) : null,
+        moreButton('note', note)),
       h('div', { className: 'meta' },
         h('div', { className: 'title', text: note.title }),
         h('div', { className: 'when', text: relTime(note.updated_at) }),
@@ -440,6 +465,9 @@ export async function mountLibrary(el, params, ctx) {
       { label: 'Umbenennen', icon: '✏️', onSelect: () => rename(kind, item) },
       { label: 'Verschieben…', icon: '📂', onSelect: () => move(kind, item) },
     ];
+    if (kind === 'note') {
+      items.push({ label: item.pinned ? 'Aus Favoriten entfernen' : 'Zu Favoriten', icon: '★', onSelect: () => togglePin(item) });
+    }
     if (shareFn) items.push({ label: 'Teilen…', icon: '👥', onSelect: () => share(kind, item) });
     items.push('sep', { label: 'Löschen', icon: '🗑️', danger: true, onSelect: () => remove(kind, item) });
     menu(anchor, items);
@@ -504,6 +532,14 @@ export async function mountLibrary(el, params, ctx) {
       if (isFolder) await model.moveFolder(item.id, selected);
       else await model.moveNote(item.id, selected);
       toast('Verschoben');
+    } catch (e) { fail(e); }
+  }
+
+  async function togglePin(note) {
+    const on = !note.pinned;
+    try {
+      await model.setPinned(note.id, on);
+      toast(on ? 'Als Favorit markiert' : 'Aus Favoriten entfernt');
     } catch (e) { fail(e); }
   }
 
