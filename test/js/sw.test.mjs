@@ -15,7 +15,7 @@ function walk(dir) {
   });
 }
 
-const NOT_CACHED = [/^js\/admin\//, /^css\/admin\.css$/, /^js\/labor\.js$/, /^css\/labor\.css$/];
+const NOT_CACHED = [/^js\/admin\//, /^css\/admin\.css$/, /^js\/labor\.js$/, /^css\/labor\.css$/, /^js\/vendor\//];
 
 test('all app js/css/icons are precached', () => {
   const files = ['js', 'css', 'icons'].flatMap((d) => walk(join(root, d))).filter((f) => !NOT_CACHED.some((re) => re.test(f)));

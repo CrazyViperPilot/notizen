@@ -69,6 +69,8 @@ Das erste Admin-Konto kommt aus GitHub-Secrets (Abschnitt 9). Weitere Admins kan
   Scrollen bleibt möglich, die Abhak-Spalte bleibt frei. „Alle aufdecken“, „Alle zudecken“, „Fertig“. Nichts davon wird gespeichert.
   Papier ist weiß, Linien hellgrau bzw. hellblau.
 - Neue Notiz: Titel (Standard: Datum), Papiersorte und Ausrichtung wählen. Die Werte der letzten Notiz sind vorausgewählt.
+- **Seitenübersicht** (Miniaturen, springen, umsortieren per Ziehen, duplizieren, löschen).
+- **Foto oder PDF einfügen** (z. B. Arbeitsblatt abfotografieren): jede Bild-/PDF-Seite wird eine Seite mit dem Bild als Hintergrund, darauf schreiben.
 - Seiten **hinzufügen** (am Ende oder nach der aktuellen Seite, übernimmt das Papier der aktuellen Seite), **löschen**,
   **Papier ändern**. Die Seiten werden untereinander gescrollt.
 
@@ -77,9 +79,10 @@ Das erste Admin-Konto kommt aus GitHub-Secrets (Abschnitt 9). Weitere Admins kan
   danach ein Feld **„Eigene Farbe“**: öffnet den Farbwähler des Systems (voller RGB-Raum); die zuletzt gewählte eigene Farbe bleibt gemerkt.
 - **Textmarker**: halbtransparent, liegt optisch unter der Schrift, 3 Farben (Gelb, Grün, Pink) und ebenfalls ein Feld **„Eigene Farbe“**
   (eigene Farbe wird getrennt vom Stift gemerkt), fester breiter Strich.
-- **Radierer**: löscht ganze Striche, die er berührt (Strich-Radierer). Ein Pixel-Radierer kommt in v1 nicht.
+- **Radierer**: Modus „Ganze Striche“ (löscht berührte Striche) oder „Teilweise“ (entfernt nur den berührten Teil).
   Stifte mit **Radier-Ende** oder **Seitentaste** (gedrückt halten beim Schreiben) radieren direkt, ohne Werkzeugwechsel –
   sofern der Browser die Taste meldet (Android/Windows oft ja, Apple Pencil hat keine). Die Spielwiese zeigt an, was der Stift meldet.
+- **Lasso**: Striche einkreisen → verschieben, vergrößern/verkleinern, Farbe ändern, duplizieren, löschen.
 - **Rückgängig / Wiederholen** (pro geöffneter Notiz, bis zu 100 Schritte, gilt bis zum Schließen der Notiz).
 - Werkzeugleiste oben, kompakt, mit großen Tippflächen (mindestens 44 pt).
 

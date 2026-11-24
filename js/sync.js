@@ -113,7 +113,7 @@ class SyncEngine {
     if (this.stopped) return;
     clearTimeout(this.timer);
     this.timer = setTimeout(() => this.now(), delay);
-    this._countPending();
+    this._countPending().catch(() => {});
   }
 
   async now() {
@@ -157,6 +157,7 @@ class SyncEngine {
   }
 
   async _countPending() {
+    if (this.stopped) return; // database may be closed (logout / user switch)
     const n = await this.db.tx(['folders', 'notes', 'pages'], 'readonly', async (h) =>
       (await h.folders.count('dirty', 1)) + (await h.notes.count('dirty', 1)) + (await h.pages.count('dirty', 1)));
     const failed = await this.db.tx(['folders', 'notes', 'pages'], 'readonly', async (h) =>

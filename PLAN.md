@@ -102,7 +102,7 @@ Playwright-Tests (`test/e2e/`), Sicherheits-Review, Leistungstest (2.000 Striche
 ---
 
 # Runde 2 (Nov 2026): Lasso, Teil-Radierer, Seitenübersicht, Arbeitsblätter
-Verbindlich: ARCHITEKTUR Abschnitt 10. Push nach `main` erst, wenn alles fertig und geprüft ist.
+Verbindlich: ARCHITEKTUR Abschnitt 10. **Stand: P15–P22 erledigt (Nov 2026).** pdf.js-Dateien heißen `.js` statt `.mjs` (Webspace).
 
 | Paket | Inhalt | Wer |
 |---|---|---|

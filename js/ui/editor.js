@@ -325,12 +325,16 @@ export async function mountEditor(el, { noteId }, ctx) {
     refreshPageInfo();
   }
 
+  // Loaded ahead: iPad Safari opens the file picker only directly inside the tap, so no await before pickAndImport.
+  let importer = null;
+  import('../import/importer.js').then((m) => { importer = m; }, (e) => console.warn(e));
+
   async function importFiles() {
-    let mod;
-    try { mod = await import('../import/importer.js'); } catch (e) { console.warn(e); toast('Import kommt bald'); return; }
+    if (!importer) { toast('Import wird geladen – bitte gleich nochmal.'); return; }
+    const picking = importer.pickAndImport({ model, noteId, afterPageId: surface.currentPageId() });
     await settle();
     try {
-      const added = await mod.pickAndImport({ model, noteId, afterPageId: surface.currentPageId() });
+      const added = await picking;
       if (!added || !added.length) return;
       await reloadPages();
       surface.scrollToPage(added[0].id);
