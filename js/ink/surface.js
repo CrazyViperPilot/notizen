@@ -21,6 +21,14 @@ const KEEP_RANGE = 1.0;         // keep canvases for pages within this many scre
 const INERTIA_FRICTION = 0.94;  // per 16 ms
 const DETAIL_DELAY = 120;       // ms after the last view change
 
+/**
+ * Stylus asks for erasing: eraser end (buttons bit 32 / button 5, e.g. Surface Pen) or side/barrel button
+ * held while writing (buttons bit 2 / button 2, e.g. many Android pens). Apple Pencil reports neither.
+ */
+export function penEraser(e) {
+  return e.pointerType === 'pen' && ((e.buttons & 32) !== 0 || e.button === 5 || (e.buttons & 2) !== 0 || e.button === 2);
+}
+
 export function createSurface(container, opts = {}) {
   return new Surface(container, opts);
 }
@@ -657,7 +665,7 @@ class Surface extends EventTarget {
   // Drawing / erasing
   _startDraw(e, hit) {
     const P = hit.P;
-    const kind = this.tool.kind;
+    const kind = penEraser(e) ? 'eraser' : this.tool.kind;
     this.drawing = {
       pointerId: e.pointerId, pointerType: e.pointerType, P, kind,
       smoother: new Smoother(), drawn: 0, lastScreen: this._local(e),

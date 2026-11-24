@@ -123,3 +123,14 @@ test('codec: custom hex colors survive, invalid ones fall back', () => {
   assert.equal(decodeStrokes('[{"c":"red","p":[1,2,3]}]')[0].color, 0);
   assert.equal(decodeStrokes('[{"c":"#12345","p":[1,2,3]}]')[0].color, 0);
 });
+
+test('stylus eraser end / side button erase, Apple Pencil and fingers do not', async () => {
+  globalThis.window ??= {}; // surface.js only needs DOM when a surface is created
+  const { penEraser } = await import('../../js/ink/surface.js');
+  assert.equal(penEraser({ pointerType: 'pen', buttons: 1, button: 0 }), false);
+  assert.equal(penEraser({ pointerType: 'pen', buttons: 3, button: 0 }), true);   // side button held
+  assert.equal(penEraser({ pointerType: 'pen', buttons: 2, button: 2 }), true);
+  assert.equal(penEraser({ pointerType: 'pen', buttons: 32, button: 5 }), true);  // eraser end
+  assert.equal(penEraser({ pointerType: 'touch', buttons: 2, button: 2 }), false);
+  assert.equal(penEraser({ pointerType: 'mouse', buttons: 2, button: 2 }), false);
+});

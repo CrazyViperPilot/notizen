@@ -10,4 +10,5 @@ body { display: flex; flex-direction: column; }
 .swatch { width: 30px; height: 30px; border-radius: 50%; display: inline-block; vertical-align: middle; }
 .dot { display: inline-block; border-radius: 50%; background: #333; vertical-align: middle; }
 #info { margin-left: auto; color: #667; font-size: 13px; }
+#probe { color: #2f5fd0; font-size: 13px; margin-left: 8px; }
 #surface { flex: 1; min-height: 0; }

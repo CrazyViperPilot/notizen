@@ -80,4 +80,18 @@ surface.addEventListener('strokes', (e) => {
 });
 apply();
 sel.value = (data.pages.find((x) => x.id === surface.currentPageId()) || data.pages[0]).paper;
+// Zeigt, was das Gerät meldet (Stift? Druck? Tasten?) – hilfreich auf neuen Tablets.
+const probe = document.getElementById('probe');
+const kindName = { pen: 'Stift', touch: 'Finger', mouse: 'Maus' };
+const showProbe = (e) => {
+  if (!probe) return;
+  const keys = [];
+  if (e.buttons & 2) keys.push('Seitentaste');
+  if (e.buttons & 32) keys.push('Radier-Ende');
+  probe.textContent = `${kindName[e.pointerType] || e.pointerType} · Druck ${e.pressure.toFixed(2)}`
+    + (e.tiltX || e.tiltY ? ` · Neigung ${e.tiltX}°/${e.tiltY}°` : '') + (keys.length ? ' · ' + keys.join(', ') + ' (radiert)' : '');
+};
+const surfEl = document.getElementById('surface');
+surfEl.addEventListener('pointerdown', showProbe);
+surfEl.addEventListener('pointermove', (e) => { if (e.buttons) showProbe(e); });
 window.nzSurface = surface; // für Tests
