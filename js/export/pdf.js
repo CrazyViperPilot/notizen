@@ -74,10 +74,23 @@ function contentOf(paper, orient, strokes, img = null) {
 
   // Papier
   const g = paperGeometry(paper, orient);
+  // Getönte Schreibbänder vor den Linien: x y w h re f (Ursprung unten links → Unterkante = y + h)
+  if (g.bands.length) {
+    const B = g.bands;
+    ops.push(rgb(PAPER_STYLE.bandColor, 'rg'));
+    for (let i = 0; i < B.length; i += 4) ops.push(`${X(B[i])} ${Y(B[i + 1] + B[i + 3])} ${num(B[i + 2] * K)} ${num(B[i + 3] * K)} re f`);
+  }
   if (g.lines.length) {
     const L = g.lines;
     ops.push(rgb(PAPER_STYLE.lineColor, 'RG'), `${num(RULE_W)} w`);
     for (let i = 0; i < L.length; i += 4) ops.push(`${X(L[i])} ${Y(L[i + 1])} m ${X(L[i + 2])} ${Y(L[i + 3])} l`);
+    ops.push('S');
+  }
+  // Kräftigere Grundlinien (1,6-fache Breite)
+  if (g.strongLines.length) {
+    const T = g.strongLines;
+    ops.push(rgb(PAPER_STYLE.lineColor, 'RG'), `${num(RULE_W * 1.6)} w`);
+    for (let i = 0; i < T.length; i += 4) ops.push(`${X(T[i])} ${Y(T[i + 1])} m ${X(T[i + 2])} ${Y(T[i + 3])} l`);
     ops.push('S');
   }
   if (g.dots.length) {

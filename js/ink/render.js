@@ -33,6 +33,17 @@ export function drawPaper(ctx, page, scale, clip = null, img = null) {
   }
   const g = paperGeometry(page.paper, page.orient);
   const lw = Math.max(1.6, 0.9 / scale);
+  // Getönte Schreibbänder (Lineatur 1 und 2) zuerst, damit die Linien obenauf liegen
+  if (g.bands.length) {
+    ctx.fillStyle = PAPER_STYLE.bandColor;
+    ctx.beginPath();
+    for (let i = 0; i < g.bands.length; i += 4) {
+      const x = g.bands[i], y = g.bands[i + 1], bw = g.bands[i + 2], bh = g.bands[i + 3];
+      if (clip && (x + bw < clip[0] || x > clip[2] || y + bh < clip[1] || y > clip[3])) continue;
+      ctx.rect(x, y, bw, bh);
+    }
+    ctx.fill();
+  }
   if (g.lines.length) {
     ctx.beginPath();
     for (let i = 0; i < g.lines.length; i += 4) {
@@ -43,6 +54,19 @@ export function drawPaper(ctx, page, scale, clip = null, img = null) {
     }
     ctx.strokeStyle = PAPER_STYLE.lineColor;
     ctx.lineWidth = lw;
+    ctx.stroke();
+  }
+  // Kräftigere Grundlinien der Schreibzeilen (1,6-fache Breite)
+  if (g.strongLines.length) {
+    ctx.beginPath();
+    for (let i = 0; i < g.strongLines.length; i += 4) {
+      const x1 = g.strongLines[i], y1 = g.strongLines[i + 1], x2 = g.strongLines[i + 2], y2 = g.strongLines[i + 3];
+      if (clip && (Math.max(x1, x2) < clip[0] || Math.min(x1, x2) > clip[2] || Math.max(y1, y2) < clip[1] || Math.min(y1, y2) > clip[3])) continue;
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+    }
+    ctx.strokeStyle = PAPER_STYLE.lineColor;
+    ctx.lineWidth = lw * 1.6;
     ctx.stroke();
   }
   if (g.dots.length) {

@@ -5,7 +5,7 @@ import { encodeStrokes, decodeStrokes, strokeId } from '../../js/ink/codec.js';
 import { Smoother, smoothPoints, penShapes, penRadius, hitTest, hitTestSegment, bbox, normPressure } from '../../js/ink/stroke.js';
 import { paperGeometry } from '../../js/ink/paper.js';
 import { eraseSplit } from '../../js/ink/stroke.js';
-import { PAGE, PAPER_STYLE } from '../../js/config.js';
+import { PAGE, PAPER_STYLE, LINEATUR, PAPERS, PAPER_NAMES } from '../../js/config.js';
 
 const line = (x0, y0, x1, y1, n = 10, p = 128) => {
   const a = [];
@@ -250,4 +250,137 @@ test('eraseSplit: neue ids verschieden vom Original und voneinander, kein gecach
     assert.equal(piece._bb, undefined);
   }
   assert.notEqual(res[0].id, res[1].id);
+});
+
+// --- Schul-Lineaturen (ARCHITEKTUR 11.1) ---
+
+const ORIENTS = ['p', 'l'];
+const LIN_PAPERS = ['lin1', 'lin2', 'lin3'];
+const OLD_PAPERS = ['blank', 'lined', 'grid', 'dotted', 'vocab'];
+
+test('config: PAPERS um die fünf neuen Sorten nach vocab erweitert, Namen gesetzt', () => {
+  assert.deepEqual(PAPERS, ['blank', 'lined', 'grid', 'dotted', 'vocab', 'lin1', 'lin2', 'lin3', 'lin4', 'math']);
+  assert.equal(PAPER_NAMES.lin1, 'Lineatur 1');
+  assert.equal(PAPER_NAMES.lin4, 'Lineatur 4');
+  assert.equal(PAPER_NAMES.math, 'Rechenkästchen mit Rand');
+  for (const p of PAPERS) assert.equal(typeof PAPER_NAMES[p], 'string', p);
+  assert.equal(PAPER_STYLE.bandColor, '#e6f4e1');
+  assert.deepEqual(LINEATUR.lin1, { band: 50, gap: 40, tint: true });
+  assert.deepEqual(LINEATUR.lin3, { band: 30, gap: 30, tint: false });
+  assert.equal(LINEATUR.top, 250);
+  assert.equal(LINEATUR.mathMargin, 150);
+});
+
+test('lineatur 1–3: je Zeile Oberlinie, Mittellinie, Unterlinie normal, Grundlinie stark; Abstände band bzw. 3·band + gap', () => {
+  for (const paper of LIN_PAPERS) {
+    for (const o of ORIENTS) {
+      const { w, h } = PAGE[o];
+      const { band: b, gap } = LINEATUR[paper];
+      const g = paperGeometry(paper, o);
+      const rows = g.strongLines.length / 4;
+      assert.ok(rows >= 5, `${paper} ${o}: Zeilen vorhanden`);
+      assert.equal(g.lines.length / 4, 3 * rows, `${paper} ${o}: 3 normale Linien je Zeile`);
+      assert.equal(g.bands instanceof Float32Array, true);
+      for (let r = 0; r < rows; r++) {
+        const y0 = LINEATUR.top + r * (3 * b + gap);
+        const s = r * 4;
+        // Grundlinie (stark): ganze Breite, y0 + 2·band
+        assert.deepEqual(Array.from(g.strongLines.slice(s, s + 4)), [0, y0 + 2 * b, w, y0 + 2 * b], `${paper} ${o} Zeile ${r}`);
+        // Oberlinie, Mittellinie, Unterlinie in dieser Reihenfolge, je ganze Breite
+        const normal = [0, 1, 2].map((k) => Array.from(g.lines.slice((3 * r + k) * 4, (3 * r + k) * 4 + 4)));
+        assert.deepEqual(normal, [[0, y0, w, y0], [0, y0 + b, w, y0 + b], [0, y0 + 3 * b, w, y0 + 3 * b]]);
+        // Gespeicherte Werte: Oben, Mitte, Grund, Unten im Abstand band; nächste Zeile nach 3·band + gap
+        const ys = [g.lines[r * 12 + 1], g.lines[r * 12 + 5], g.strongLines[s + 1], g.lines[r * 12 + 9]];
+        for (let k = 1; k < 4; k++) assert.equal(ys[k] - ys[k - 1], b, `${paper} ${o} Bandabstand ${k}`);
+        if (r + 1 < rows) assert.equal(g.lines[(r + 1) * 12 + 1] - ys[3], gap, `${paper} ${o} Zeilenabstand`);
+      }
+      // Alles innerhalb der Seite, letzte Unterlinie ≤ h − 150, und keine weitere Zeile passt mehr
+      const lastUnder = LINEATUR.top + (rows - 1) * (3 * b + gap) + 3 * b;
+      assert.ok(lastUnder <= h - 150, `${paper} ${o}: letzte Unterlinie im Blatt`);
+      assert.ok(LINEATUR.top + rows * (3 * b + gap) + 3 * b > h - 150, `${paper} ${o}: keine Zeile fehlt`);
+      for (let i = 0; i < g.lines.length; i += 2) assert.ok(g.lines[i + 1] >= 0 && g.lines[i + 1] <= h);
+      for (let i = 0; i < g.strongLines.length; i += 2) assert.ok(g.strongLines[i + 1] >= 0 && g.strongLines[i + 1] <= h);
+    }
+  }
+});
+
+test('lineatur 1 und 3 Maße: 13 bzw. 21 Zeilen im Hochformat, getönte Bänder nur bei lin1/lin2', () => {
+  const l1 = paperGeometry('lin1', 'p');
+  assert.equal(l1.strongLines.length / 4, 13);
+  assert.equal(paperGeometry('lin1', 'l').strongLines.length / 4, 9);
+  assert.equal(paperGeometry('lin3', 'p').strongLines.length / 4, 21);
+  for (const paper of ['lin1', 'lin2']) {
+    for (const o of ORIENTS) {
+      const { w } = PAGE[o];
+      const { band: b } = LINEATUR[paper];
+      const g = paperGeometry(paper, o);
+      const rows = g.strongLines.length / 4;
+      assert.equal(g.bands.length / 4, rows, `${paper} ${o}: ein Mittelband je Zeile`);
+      for (let r = 0; r < rows; r++) {
+        const y0 = LINEATUR.top + r * (3 * b + LINEATUR[paper].gap);
+        assert.deepEqual(Array.from(g.bands.slice(r * 4, r * 4 + 4)), [0, y0 + b, w, b], `${paper} ${o} Band ${r}`);
+      }
+    }
+  }
+  assert.equal(paperGeometry('lin3', 'p').bands.length, 0, 'lin3 nicht getönt');
+  assert.equal(paperGeometry('lin3', 'l').bands.length, 0, 'lin3 nicht getönt');
+});
+
+test('lineatur 1–3: Rand links bei x = 250 über die volle Höhe', () => {
+  for (const paper of LIN_PAPERS) {
+    for (const o of ORIENTS) {
+      const g = paperGeometry(paper, o);
+      assert.deepEqual(Array.from(g.margin), [PAPER_STYLE.margin, 0, PAPER_STYLE.margin, PAGE[o].h]);
+    }
+  }
+});
+
+test('lineatur 4: Linien im Abstand 90 ab 250 bis h − 90, Rand links', () => {
+  for (const o of ORIENTS) {
+    const { w, h } = PAGE[o];
+    const g = paperGeometry('lin4', o);
+    const ys = [];
+    for (let i = 0; i < g.lines.length; i += 4) {
+      assert.equal(g.lines[i], 0);
+      assert.equal(g.lines[i + 2], w);
+      assert.equal(g.lines[i + 1], g.lines[i + 3]);
+      ys.push(g.lines[i + 1]);
+    }
+    assert.equal(ys[0], LINEATUR.top);
+    for (let i = 1; i < ys.length; i++) assert.equal(ys[i] - ys[i - 1], 90);
+    assert.ok(ys[ys.length - 1] <= h - 90);
+    assert.ok(ys[ys.length - 1] + 90 > h - 90);
+    assert.equal(g.strongLines.length, 0);
+    assert.equal(g.bands.length, 0);
+    assert.deepEqual(Array.from(g.margin), [PAPER_STYLE.margin, 0, PAPER_STYLE.margin, h]);
+  }
+});
+
+test('math: Karo wie kariert, zwei Randlinien bei 150 und w − 150 über die volle Höhe', () => {
+  for (const o of ORIENTS) {
+    const { w, h } = PAGE[o];
+    const g = paperGeometry('math', o);
+    assert.deepEqual(Array.from(g.lines), Array.from(paperGeometry('grid', o).lines));
+    assert.ok(g.lines.length / 4 > (w / 50) + (h / 50) - 2);
+    assert.equal(g.margin.length, 8, 'zwei Randsegmente');
+    assert.deepEqual(Array.from(g.margin), [150, 0, 150, h, w - 150, 0, w - 150, h]);
+    assert.equal(g.strongLines.length, 0);
+    assert.equal(g.bands.length, 0);
+  }
+});
+
+test('alte Papiersorten und blanko: bands und strongLines leer, Typ Float32Array', () => {
+  for (const paper of OLD_PAPERS) {
+    for (const o of ORIENTS) {
+      const g = paperGeometry(paper, o);
+      assert.ok(g.bands instanceof Float32Array, `${paper} bands`);
+      assert.ok(g.strongLines instanceof Float32Array, `${paper} strongLines`);
+      assert.equal(g.bands.length, 0, `${paper} bands leer`);
+      assert.equal(g.strongLines.length, 0, `${paper} strongLines leer`);
+    }
+  }
+  for (const paper of [...LIN_PAPERS, 'lin4', 'math']) {
+    const g = paperGeometry(paper, 'p');
+    assert.ok(g.bands instanceof Float32Array && g.strongLines instanceof Float32Array, paper);
+  }
 });

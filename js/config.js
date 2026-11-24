@@ -1,8 +1,11 @@
 // Shared constants. Page units: 0.1 mm.
 
 export const PAGE = { p: { w: 2100, h: 2970 }, l: { w: 2970, h: 2100 } };
-export const PAPERS = ['blank', 'lined', 'grid', 'dotted', 'vocab'];
-export const PAPER_NAMES = { blank: 'Blanko', lined: 'Liniert', grid: 'Kariert', dotted: 'Gepunktet', vocab: 'Vokabeln' };
+export const PAPERS = ['blank', 'lined', 'grid', 'dotted', 'vocab', 'lin1', 'lin2', 'lin3', 'lin4', 'math'];
+export const PAPER_NAMES = {
+  blank: 'Blanko', lined: 'Liniert', grid: 'Kariert', dotted: 'Gepunktet', vocab: 'Vokabeln',
+  lin1: 'Lineatur 1', lin2: 'Lineatur 2', lin3: 'Lineatur 3', lin4: 'Lineatur 4', math: 'Rechenkästchen mit Rand',
+};
 
 export const PEN_COLORS = ['#1a1a1a', '#1f3a93', '#c0392b', '#1e8449', '#e67e22', '#7d3c98'];
 export const PEN_COLOR_NAMES = ['Schwarz', 'Dunkelblau', 'Rot', 'Grün', 'Orange', 'Lila'];
@@ -32,6 +35,20 @@ export const PAPER_STYLE = {
   vocabTop: 300,  // vocab: first line (above it: room for a heading), then every `lined`
   vocabSplit: 0.47, // vocab: divider word | translation (share of page width)
   vocabCheck: 170,  // vocab: width of the tick column on the right
+  bandColor: '#e6f4e1', // getönte Schreibband-Flächen (Lineatur 1 und 2)
+};
+
+// Schul-Lineaturen (Maße in 0,1 mm). Angelehnt an Schulhefte, an echte Hefte anpassbar.
+// lin1–3: Schreibzeilen aus Ober-, Mittel-, Grund- und Unterlinie; band = Abstand zwischen zwei Linien,
+// gap = Zwischenraum zur nächsten Zeile, tint = Mittelband getönt. lin4: Linien im Abstand `line`.
+// top = erste Linie, mathMargin = Randlinien bei „Rechenkästchen mit Rand“ (links und rechts).
+export const LINEATUR = {
+  lin1: { band: 50, gap: 40, tint: true },
+  lin2: { band: 40, gap: 35, tint: true },
+  lin3: { band: 30, gap: 30, tint: false },
+  lin4: { line: 90 },
+  top: 250,
+  mathMargin: 150,
 };
 
 export const ZOOM_MIN = 1;

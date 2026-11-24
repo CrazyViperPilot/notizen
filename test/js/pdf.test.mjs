@@ -8,6 +8,7 @@ import { join } from 'node:path';
 import { inflateSync } from 'node:zlib';
 import { buildPdf, notePdf, jpegInfo } from '../../js/export/pdf.js';
 import { encodeStrokes, decodeStrokes } from '../../js/ink/codec.js';
+import { paperGeometry } from '../../js/ink/paper.js';
 
 const TITLE = 'Übung Größe ÄÖÜ ß 𝄞';
 
@@ -293,4 +294,36 @@ test('buildPdf: Bild mit Querformat-Seite wird contain eingepasst', () => {
   // x = (2970 − 2100) / 2 = 435 (0,1 mm) → 123.31 pt; y von unten: (2100 − 2100) = 0
   assert.match(s, /q 595\.28 0 0 595\.28 123\.31 0 cm \/Im1 Do Q/);
   checkXref(bytes);
+});
+
+// ───────── Schul-Lineaturen (ARCHITEKTUR 11.1) ─────────
+
+test('buildPdf: Lineatur 1 füllt je Mittelband ein Rechteck (re f) vor den Linien, Grundlinie 1,6-fach, xref gültig', () => {
+  const bytes = buildPdf([{ paper: 'lin1', orient: 'p', strokes: null }], { title: 'Lineatur' });
+  const offsets = checkXref(bytes);
+  const c = streamOf(bytes, offsets, 6).data;
+  const rows = paperGeometry('lin1', 'p').strongLines.length / 4;
+  const rects = c.split('\n').filter((l) => / re f$/.test(l));
+  assert.equal(rects.length, rows, 'ein Band je Zeile');
+  assert.match(c, /0\.902 0\.957 0\.882 rg/, 'Bandfarbe #e6f4e1');
+  assert.ok(c.indexOf(' re f') < c.indexOf('0.35 w'), 'Bänder vor den Linien');
+  assert.match(c, /0\.56 w/, 'Grundlinie mit 1,6-facher Breite (0,35 × 1,6)');
+});
+
+test('buildPdf: Lineatur 3 (ohne Band), Lineatur 4 und Rechenkästchen ohne Bänder', () => {
+  for (const paper of ['lin3', 'lin4', 'math']) {
+    const bytes = buildPdf([{ paper, orient: 'l', strokes: null }], { title: paper });
+    const offsets = checkXref(bytes);
+    const c = streamOf(bytes, offsets, 6).data;
+    assert.doesNotMatch(c, / re f$/m, `${paper}: keine Bänder`);
+  }
+});
+
+test('notePdf: Lineaturen und Rechenkästchen ergeben gültige PDFs (xref)', async () => {
+  for (const paper of ['lin1', 'lin2', 'lin3', 'lin4', 'math']) {
+    for (const orient of ['p', 'l']) {
+      const blob = await notePdf({ title: paper }, [{ paper, orient, strokes: null }]);
+      checkXref(new Uint8Array(await blob.arrayBuffer()));
+    }
+  }
 });
