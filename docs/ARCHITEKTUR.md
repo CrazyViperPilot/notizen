@@ -402,3 +402,56 @@ Beim Start ruft die App `navigator.storage.persist()` auf.
 - **E2E** (Playwright): Login → Ordner → Notiz → Pencil-Striche per `PointerEvent` mit `pointerType: 'pen'` → Neuladen → Striche da;
   Offline (Context offline) schreiben → online → auf zweitem Context sichtbar; Konflikt zweier Contexts → Kopie-Seite;
   Teilen nur lesen; Admin legt Benutzer an, Erstanmeldung erzwingt Passwortwechsel.
+
+## 10. Runde 2: Lasso, Teil-Radierer, Seitenübersicht, Arbeitsblätter (verbindlich für P15–P20)
+
+### 10.1 Bilder als Seitenhintergrund („Assets“)
+- Ein Asset ist ein **JPEG** (alle Importe werden im Client in JPEG umgewandelt, längste Seite ≤ 2400 px, Qualität 0,85).
+  `id` = SHA-256 (hex, 64 Zeichen) der JPEG-Bytes. Dazu `w`, `h` in Pixeln. Gleiche Datei = gleiche id (keine Doppel-Uploads).
+- Seite: neues Feld **`bg`** = Asset-id oder `null`. Das Bild wird „contain“ (Seitenverhältnis bleibt, zentriert) auf die Seite gelegt:
+  Reihenfolge Weiß → Bild → Papierlinien (Importseiten haben `paper = 'blank'`) → Textmarker → Stift.
+  Geometrie: `imageRect(page, iw, ih) → [x, y, w, h]` in `js/ink/render.js` (auch für PDF-Export und Vorschaubilder).
+- **MySQL** (Migration `003_assets.sql`): `pages.bg CHAR(64) CHARACTER SET ascii NULL`; Tabelle `assets`
+  (`user_id` INT UNSIGNED, `id` CHAR(64) ascii, `mime` VARCHAR(40), `w` INT, `h` INT, `bytes` INT, `data` MEDIUMBLOB, `created_at` BIGINT;
+  PRIMARY KEY (`user_id`, `id`), FK `user_id` → users ON DELETE CASCADE).
+- **API** (`backend/assets.php`):
+  - `asset_put` POST `{id, mime: 'image/jpeg', w, h, data: <base64>}` → prüft Base64, Größe ≤ 8 MB, JPEG-Signatur `FF D8 FF`,
+    SHA-256 = id, 1 ≤ w,h ≤ 10000, Quota (`used_bytes + bytes ≤ quota_bytes`, sonst 507 `quota`). Schon vorhanden → ok ohne erneutes Zählen.
+    Antwort `{asset: {id, bytes}}`. `used_bytes` zählt Assets mit.
+  - `asset_get` GET `id`, optional `note` → **Binärantwort** (Content-Type = mime, `Cache-Control: private, max-age=31536000, immutable`).
+    Erlaubt: eigenes Asset; oder `note` ist für den Aufrufer lesbar (`can_read_note`, fremder Besitzer) und hat eine nicht gelöschte Seite mit
+    `bg = id`; oder Admin mit `note` (Asset des Notiz-Besitzers, wenn eine Seite der Notiz es nutzt). Sonst 404.
+  - Binärantworten: Handler gibt `['__raw' => $bytes, '__type' => $mime, '__cache' => $header]` zurück; `api.php` schreibt sie roh.
+- **Sync:** `bg` ist ein normales Seitenfeld (Push, Pull, Konfliktkopien übernehmen es). Push einer Seite mit `bg`, dessen Asset beim
+  Benutzer nicht existiert → `rejected/missing_asset`. Der Client lädt Assets deshalb **vor** den Seiten hoch.
+  Tägliche Bereinigung: Assets ohne Verweis von einer nicht endgültig gelöschten Seite und älter als 1 Tag werden gelöscht;
+  `used_bytes` = Summe Seiten-Bytes + Summe Asset-Bytes.
+- **Client:** IndexedDB Version 2, Store `assets` (keyPath `id`, Index `uploaded`): `{id, blob, mime, w, h, uploaded: 0|1, at}`.
+  `model.js`: `addImagePages(noteId, afterPageId, images: [{blob, w, h}]) → Page[]` (hasht, speichert Asset mit uploaded 0, legt Seiten
+  `paper 'blank'`, `orient` = 'l' wenn w > h, `bg` an), `getImage(id, {noteId}) → Promise<ImageBitmap|HTMLImageElement|null>`
+  (lokal, sonst `api.blob('asset_get', {id, note})` und lokal speichern; Cache im Speicher), `movePage(pageId, beforePageId|null)`,
+  `duplicatePage(pageId) → Page`. `sync.js` lädt vor dem Seiten-Push Assets mit `uploaded = 0` hoch; Seiten, deren Asset noch nicht
+  hochgeladen ist, warten.
+- **Surface:** Option `getImage(assetId) → Promise<CanvasImageSource|null>`; sobald ein Bild geladen ist, werden betroffene Seiten neu gezeichnet.
+- **Import** (`js/import/importer.js`): `pickAndImport({model, noteId, afterPageId}) → Promise<Page[]>` – Dateiauswahl `image/*,application/pdf`
+  (mehrere; auf dem iPad bietet das auch „Foto aufnehmen“). Bilder: dekodieren, verkleinern, JPEG. PDF: vendored pdf.js
+  (`js/vendor/pdfjs/`, nur bei Bedarf geladen, `isEvalSupported: false`), jede PDF-Seite als JPEG, höchstens 50 Seiten, Fortschrittsanzeige.
+
+### 10.2 Lasso
+- Werkzeug `'lasso'` (Leiste: nach dem Radierer). Mit dem Stift (bzw. Zeichen-Zeiger) eine Schleife ziehen → ausgewählt sind die Striche
+  der Seite, von deren Punkten mindestens die Hälfte im Polygon liegt.
+- Auswahl: gestrichelter Rahmen + Griff unten rechts (gleichmäßig skalieren). Ziehen im Rahmen verschiebt (nur auf derselben Seite),
+  Ziehen am Griff skaliert (Strichbreite bleibt). Antippen außerhalb hebt die Auswahl auf. Finger verschieben weiterhin die Ansicht.
+- Aktionsleiste über der Auswahl: **Farbe** (Palette des Werkzeugs inkl. eigener Farbe), **Duplizieren** (versetzt eingefügt, neue Auswahl),
+  **Löschen**. Undo/Redo als ein Schritt `{type: 'replace', pageId, before, after}`.
+
+### 10.3 Teil-Radierer
+- Radierer hat zwei Modi (Leiste bei aktivem Radierer): **„Ganze Striche“** (bisher) und **„Teilweise“** (Standard bleibt „Ganze Striche“).
+- `stroke.js`: `eraseSplit(stroke, ax, ay, bx, by, r) → null | Stroke[]` – `null`, wenn der Strich nicht berührt wird; sonst die
+  übrig bleibenden Teilstücke (neue ids, gleiche Farbe/Breite/Art; Stücke mit < 2 Punkten entfallen). Vorher wird der Strich so verdichtet,
+  dass Punktabstände ≤ r/2 sind, damit auch dünn abgetastete Striche sauber geteilt werden.
+
+### 10.4 Seitenübersicht
+- `js/ui/pages.js`: `openPageOverview({model, noteId, currentPageId, getImage, onJump}) → Promise<void>` – Vollbild-Raster aller Seiten
+  als Miniaturen (mit Papier, Hintergrundbild, Strichen), Antippen springt zur Seite, Umsortieren per Ziehen (langes Drücken) und alternativ
+  Knöpfe ◀ ▶, Menü pro Seite: Duplizieren, Löschen (letzte Seite nicht). Nutzt `model.movePage/duplicatePage/deletePage`.

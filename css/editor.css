@@ -87,3 +87,14 @@
 .quiz-bar .quiz-title { font-weight: 600; padding: 0 8px; }
 .tb-quiz.on { background: var(--accent-soft); border-color: var(--accent); }
 .tb-quiz { font-size: 15px; padding: 0 12px; width: auto; }
+.tb-mode { font-size: 15px; padding: 0 12px; width: auto; }
+
+/* Lasso: Aktionsleiste über der Auswahl */
+.sel-bar {
+  position: absolute; z-index: 15; display: flex; gap: 4px; padding: 4px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow-lg);
+  transform: translate(-50%, -100%);
+}
+.sel-bar .btn { min-height: 40px; font-size: 15px; }
+.sel-colors { display: flex; gap: 4px; flex-wrap: wrap; max-width: 260px; }
+.sel-colors .sw { width: 36px; height: 36px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 1px var(--line); cursor: pointer; }

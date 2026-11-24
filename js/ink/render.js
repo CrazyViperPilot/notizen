@@ -10,10 +10,27 @@ export function setPageTransform(ctx, scale, ox = 0, oy = 0) {
   ctx.setTransform(scale, 0, 0, scale, ox, oy);
 }
 
-export function drawPaper(ctx, page, scale, clip = null) {
+/** Where a background image of iw×ih pixels lies on the page ("contain", centered): [x, y, w, h] in page units. */
+export function imageRect(page, iw, ih) {
+  const { w, h } = PAGE[page.orient] || PAGE.p;
+  if (!(iw > 0 && ih > 0)) return [0, 0, w, h];
+  const f = Math.min(w / iw, h / ih);
+  const rw = iw * f, rh = ih * f;
+  return [(w - rw) / 2, (h - rh) / 2, rw, rh];
+}
+
+/** `img`: decoded background image (page.bg) or null. */
+export function drawPaper(ctx, page, scale, clip = null, img = null) {
   const { w, h } = PAGE[page.orient] || PAGE.p;
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, w, h);
+  if (img) {
+    const r = imageRect(page, img.width, img.height);
+    ctx.save();
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(img, r[0], r[1], r[2], r[3]);
+    ctx.restore();
+  }
   const g = paperGeometry(page.paper, page.orient);
   const lw = Math.max(1.6, 0.9 / scale);
   if (g.lines.length) {
@@ -104,8 +121,8 @@ function visible(stroke, clip) {
 }
 
 /** Paper, then all highlighters, then all pens. `clip` = [x0, y0, x1, y1] in page units to skip invisible strokes. */
-export function drawPage(ctx, page, strokes, scale, clip = null) {
-  drawPaper(ctx, page, scale, clip);
+export function drawPage(ctx, page, strokes, scale, clip = null, img = null) {
+  drawPaper(ctx, page, scale, clip, img);
   for (const s of strokes) if (s.type === 'h' && visible(s, clip)) drawHighlighter(ctx, s);
   for (const s of strokes) if (s.type !== 'h' && visible(s, clip)) drawPen(ctx, s);
 }

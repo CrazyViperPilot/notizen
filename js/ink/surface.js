@@ -12,7 +12,7 @@
 
 import { isHexColor, PAGE, PAGE_GAP, PAGE_PAD, ZOOM_MIN, ZOOM_MAX, ERASER_RADIUS, UNDO_LIMIT, SAVE_DELAY } from '../config.js';
 import { decodeStrokes, encodeStrokes, strokeId } from './codec.js';
-import { Smoother, normPressure, hitTestSegment, bbox } from './stroke.js';
+import { Smoother, normPressure, hitTestSegment, bbox, eraseSplit } from './stroke.js';
 import { drawPage, drawPen, drawHighlighter, setPageTransform } from './render.js';
 import { vocabLayout } from './paper.js';
 
@@ -30,13 +30,42 @@ export function penEraser(e) {
   return e.pointerType === 'pen' && ((e.buttons & 32) !== 0 || e.button === 5 || (e.buttons & 2) !== 0 || e.button === 2);
 }
 
+/** Snapshot of a stroke (points copied) for undo entries that replace a whole page content. */
+function snap(s) {
+  return { id: s.id, type: s.type, color: s.color, width: s.width, pts: Int32Array.from(s.pts) };
+}
+const restore = (s) => snap(s);
+
+/** Point in polygon (flat [x,y,…]), even-odd rule. */
+function inPolygon(poly, x, y) {
+  let inside = false;
+  for (let i = 0, j = poly.length - 2; i < poly.length; j = i, i += 2) {
+    const xi = poly[i], yi = poly[i + 1], xj = poly[j], yj = poly[j + 1];
+    if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
+
+function boundsOf(strokes) {
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const s of strokes) {
+    const b = bbox(s);
+    x0 = Math.min(x0, b[0]); y0 = Math.min(y0, b[1]); x1 = Math.max(x1, b[2]); y1 = Math.max(y1, b[3]);
+  }
+  return [x0, y0, x1, y1];
+}
+
+const HANDLE = 22;  // CSS px, scale handle radius (hit area)
+
 export function createSurface(container, opts = {}) {
   return new Surface(container, opts);
 }
 
 class Surface extends EventTarget {
-  constructor(container, { readOnly = false, fingerDraw = false } = {}) {
+  constructor(container, { readOnly = false, fingerDraw = false, getImage = null } = {}) {
     super();
+    this.getImage = getImage;   // (assetId) → Promise<CanvasImageSource|null> for page backgrounds
+    this.images = new Map();    // assetId → {img, loading}
     this.el = container;
     this.readOnly = readOnly;
     this.fingerDraw = fingerDraw;
@@ -80,13 +109,15 @@ class Surface extends EventTarget {
       if (!P) {
         P = { id: row.id, strokes: decodeStrokes(raw), raw, div: null, canvas: null, rendered: false };
       } else if (raw !== P.raw && !this.saveTimers.has(P.id)) {
-        // Changed elsewhere (sync). Local undo steps for this page no longer apply.
+        // Changed elsewhere (sync). Local undo steps and a selection on this page no longer apply.
+        if (this.sel && this.sel.P === P) this.clearSelection();
         P.strokes = decodeStrokes(raw);
         P.raw = raw;
         this._dropHistory(P.id);
         P.rendered = false;
       }
-      if (P.paper !== row.paper || P.orient !== row.orient) P.rendered = false;
+      if (P.paper !== row.paper || P.orient !== row.orient || (P.bg || null) !== (row.bg || null)) P.rendered = false;
+      P.bg = row.bg || null;
       P.paper = row.paper;
       P.orient = row.orient === 'l' ? 'l' : 'p';
       this.pages.push(P);
@@ -104,11 +135,12 @@ class Surface extends EventTarget {
   /** Replace one page (e.g. after sync). */
   updatePage(row) {
     if (!this.byId.has(row.id)) return;
-    this.setPages(this.pages.map((P) => (P.id === row.id ? row : { id: P.id, paper: P.paper, orient: P.orient, strokes: P.raw })), { keepView: true });
+    this.setPages(this.pages.map((P) => (P.id === row.id ? row : { id: P.id, paper: P.paper, orient: P.orient, bg: P.bg, strokes: P.raw })), { keepView: true });
   }
 
   setTool(tool) {
     this.tool = { ...this.tool, ...tool };
+    if (this.tool.kind !== 'lasso') this.clearSelection();
   }
 
   /**
@@ -128,6 +160,53 @@ class Surface extends EventTarget {
     this._refreshCovers();
   }
 
+  // ───── lasso selection (public) ─────
+
+  /** {pageId, count, hasPen, hasHighlighter} or null */
+  selectionInfo() {
+    const s = this.sel;
+    if (!s) return null;
+    return { pageId: s.P.id, count: s.strokes.length, hasPen: s.strokes.some((x) => x.type !== 'h'), hasHighlighter: s.strokes.some((x) => x.type === 'h') };
+  }
+
+  clearSelection() {
+    if (!this.sel) return;
+    this.sel = null;
+    this._placeSelection();
+    this.dispatchEvent(new CustomEvent('selection', { detail: null }));
+  }
+
+  /** Actions on the selection: 'delete' | 'duplicate' | 'color' (value: palette index or '#rrggbb'; type: 'p'|'h' strokes to recolor). */
+  selectionAction(action, value, type = 'p') {
+    const s = this.sel;
+    if (!s) return;
+    const P = s.P;
+    const before = P.strokes.map(snap);
+    if (action === 'delete') {
+      const gone = new Set(s.strokes);
+      P.strokes = P.strokes.filter((x) => !gone.has(x));
+      this.sel = null;
+    } else if (action === 'duplicate') {
+      const off = 60; // 6 mm
+      const copies = s.strokes.map((x) => {
+        const c = snap(x);
+        c.id = strokeId();
+        for (let i = 0; i < c.pts.length; i += 3) { c.pts[i] += off; c.pts[i + 1] += off; }
+        return c;
+      });
+      P.strokes.push(...copies);
+      this.sel = { P, strokes: copies };
+    } else if (action === 'color') {
+      let n = 0;
+      for (const x of s.strokes) if (x.type === type) { x.color = value; n++; }
+      if (!n) return;
+    } else return;
+    this._pushHistory({ type: 'replace', pageId: P.id, before, after: P.strokes.map(snap) });
+    this._pageChanged(P, true);
+    this._placeSelection();
+    this._emitSelection();
+  }
+
   hasVocab() {
     return this.pages.some((P) => P.paper === 'vocab');
   }
@@ -137,11 +216,13 @@ class Surface extends EventTarget {
   }
 
   undo() {
+    this.clearSelection();
     const e = this.history.pop();
     if (!e) return;
     const P = this.byId.get(e.pageId);
     if (P) {
       if (e.type === 'add') P.strokes = P.strokes.filter((s) => s !== e.stroke);
+      else if (e.type === 'replace') P.strokes = e.before.map(restore);
       else for (const it of [...e.items].sort((a, b) => a.index - b.index)) P.strokes.splice(it.index, 0, it.stroke);
       this._pageChanged(P, true);
     }
@@ -150,11 +231,13 @@ class Surface extends EventTarget {
   }
 
   redo() {
+    this.clearSelection();
     const e = this.redoStack.pop();
     if (!e) return;
     const P = this.byId.get(e.pageId);
     if (P) {
       if (e.type === 'add') P.strokes.push(e.stroke);
+      else if (e.type === 'replace') P.strokes = e.after.map(restore);
       else { const gone = new Set(e.items.map((i) => i.stroke)); P.strokes = P.strokes.filter((s) => !gone.has(s)); }
       this._pageChanged(P, true);
     }
@@ -349,6 +432,7 @@ class Surface extends EventTarget {
       this.dispatchEvent(new CustomEvent('pagechange', { detail: { pageId: best.id } }));
     }
     this._placeDetail();
+    this._placeSelection();
     this._schedule();
   }
 
@@ -362,6 +446,132 @@ class Surface extends EventTarget {
     this.layer.append(d);
     P.div = d; P.canvas = c; P.rendered = false;
     this._sizeCanvas(P);
+  }
+
+  // ───── lasso selection (internal) ─────
+
+  _selRect() {
+    const s = this.sel;
+    if (!s) return null;
+    const b = boundsOf(s.strokes);
+    const r = this._screenRect(s.P);
+    const f = this.z * this.k;
+    return { x: r.x + b[0] * f, y: r.y + b[1] * f, w: (b[2] - b[0]) * f, h: (b[3] - b[1]) * f, b };
+  }
+
+  _placeSelection() {
+    const rr = this._selRect();
+    if (!rr || !this.sel.strokes.length) {
+      if (this.selEl) this.selEl.hidden = true;
+      return;
+    }
+    if (!this.selEl) {
+      this.selEl = document.createElement('div');
+      this.selEl.className = 'nz-selection';
+      this.selEl.style.cssText = 'position:absolute;left:0;top:0;border:1.5px dashed #2f5fd0;border-radius:4px;'
+        + 'background:rgba(47,95,208,.06);pointer-events:none;box-sizing:border-box;';
+      const handle = document.createElement('div');
+      handle.className = 'nz-sel-handle';
+      handle.style.cssText = 'position:absolute;right:-9px;bottom:-9px;width:16px;height:16px;border-radius:50%;'
+        + 'background:#fff;border:2px solid #2f5fd0;box-shadow:0 1px 3px rgba(0,0,0,.25);';
+      this.selEl.append(handle);
+      this.covers.append(this.selEl);
+    }
+    const pad = 6;
+    const st = this.selEl.style;
+    this.selEl.hidden = false;
+    st.transform = `translate3d(${rr.x - pad}px, ${rr.y - pad}px, 0)`;
+    st.width = rr.w + 2 * pad + 'px';
+    st.height = rr.h + 2 * pad + 'px';
+  }
+
+  _emitSelection() {
+    const rr = this._selRect();
+    this.dispatchEvent(new CustomEvent('selection', {
+      detail: rr && this.sel.strokes.length ? { ...this.selectionInfo(), rect: { x: rr.x, y: rr.y, w: rr.w, h: rr.h } } : null,
+    }));
+  }
+
+  /** What a lasso pointer-down at screen point does: 'scale' | 'move' | 'new'. */
+  _lassoMode(pt, P) {
+    const rr = this._selRect();
+    if (!rr || this.sel.P !== P) return 'new';
+    if (Math.hypot(pt.x - (rr.x + rr.w + 6), pt.y - (rr.y + rr.h + 6)) <= HANDLE) return 'scale';
+    if (pt.x >= rr.x - 10 && pt.x <= rr.x + rr.w + 10 && pt.y >= rr.y - 10 && pt.y <= rr.y + rr.h + 10) return 'move';
+    return 'new';
+  }
+
+  _lassoSample(ux, uy) {
+    const d = this.drawing;
+    const L = d.lasso;
+    if (L.mode === 'new') { L.path.push(ux, uy); return; }
+    let f = 1, dx = 0, dy = 0;
+    if (L.mode === 'move') { dx = ux - L.sx; dy = uy - L.sy; }
+    else {
+      const [ax, ay, bx, by] = L.box;
+      const denom = (bx - ax) + (by - ay);
+      f = denom > 0 ? Math.max(0.1, Math.min(10, ((ux - ax) + (uy - ay)) / denom)) : 1;
+    }
+    const ax = L.box[0], ay = L.box[1];
+    for (const [s, orig] of L.orig) {
+      const pts = new Int32Array(orig.length);
+      for (let i = 0; i < orig.length; i += 3) {
+        pts[i] = Math.round(L.mode === 'move' ? orig[i] + dx : ax + (orig[i] - ax) * f);
+        pts[i + 1] = Math.round(L.mode === 'move' ? orig[i + 1] + dy : ay + (orig[i + 1] - ay) * f);
+        pts[i + 2] = orig[i + 2];
+      }
+      s.pts = pts;
+      delete s._bb;
+    }
+    L.changed = true;
+    d.P.rendered = false;
+    if (d.P.canvas) this.renderQueue.add(d.P);
+    if (this.detailState) this._renderDetailSoon();
+    this._placeSelection();
+  }
+
+  _lassoEnd(d) {
+    const L = d.lasso;
+    if (L.mode === 'new') {
+      const poly = L.path;
+      if (poly.length < 6) { this.clearSelection(); return; }
+      const hit = d.P.strokes.filter((s) => {
+        let inside = 0;
+        const n = s.pts.length / 3;
+        for (let i = 0; i < s.pts.length; i += 3) if (inPolygon(poly, s.pts[i], s.pts[i + 1])) inside++;
+        return inside * 2 >= n;
+      });
+      this.sel = hit.length ? { P: d.P, strokes: hit } : null;
+      this._placeSelection();
+      this._emitSelection();
+      return;
+    }
+    if (L.changed) {
+      this._pushHistory({ type: 'replace', pageId: d.P.id, before: L.before, after: d.P.strokes.map(snap) });
+      this._pageChanged(d.P, true);
+    }
+    this._placeSelection();
+    this._emitSelection();
+  }
+
+  // ───── background images ─────
+
+  /** Decoded background of a page, or null (not set / still loading – then the page is redrawn when it arrives). */
+  _img(P) {
+    if (!P.bg || !this.getImage) return null;
+    const e = this.images.get(P.bg);
+    if (e) return e.img;
+    const entry = { img: null };
+    this.images.set(P.bg, entry);
+    const id = P.bg;
+    Promise.resolve(this.getImage(id)).then((img) => {
+      if (!img || this.images.get(id) !== entry) return;
+      entry.img = img;
+      for (const Q of this.pages) if (Q.bg === id) { Q.rendered = false; if (Q.canvas) this.renderQueue.add(Q); }
+      if (this.detailState) this._renderDetailSoon();
+      this._schedule();
+    }, () => {});
+    return null;
   }
 
   // ───── quiz covers ─────
@@ -452,7 +662,7 @@ class Surface extends EventTarget {
     if (!P.canvas) return;
     const ctx = P.canvas.getContext('2d');
     setPageTransform(ctx, P.scale);
-    drawPage(ctx, P, P.strokes, P.scale);
+    drawPage(ctx, P, P.strokes, P.scale, null, this._img(P));
     P.rendered = true;
   }
 
@@ -487,7 +697,7 @@ class Surface extends EventTarget {
       setPageTransform(ctx, s, r.x * this.dpr, r.y * this.dpr);
       const clip = [Math.max(0, -r.x) / (this.z * this.k), Math.max(0, -r.y) / (this.z * this.k),
         (this.W - r.x) / (this.z * this.k), (this.H - r.y) / (this.z * this.k)];
-      drawPage(ctx, P, P.strokes, s, clip);
+      drawPage(ctx, P, P.strokes, s, clip, this._img(P));
       ctx.restore();
     }
     this.detailState = { z: this.z, ox: this.ox, oy: this.oy };
@@ -785,11 +995,25 @@ class Surface extends EventTarget {
   _startDraw(e, hit) {
     const P = hit.P;
     const kind = penEraser(e) ? 'eraser' : this.tool.kind;
+    const pt = this._local(e);
+    let lasso = null;
+    if (kind === 'lasso') {
+      const mode = this._lassoMode(pt, P);
+      if (mode === 'new') this.clearSelection();
+      lasso = { mode, path: [], sx: hit.ux, sy: hit.uy, changed: false, before: null, orig: null, box: null };
+      if (mode !== 'new') {
+        lasso.before = P.strokes.map(snap);
+        lasso.orig = new Map(this.sel.strokes.map((s) => [s, Int32Array.from(s.pts)]));
+        lasso.box = boundsOf(this.sel.strokes);
+        this.dispatchEvent(new CustomEvent('selection', { detail: null })); // hide action bar while dragging
+      }
+    }
     this.drawing = {
-      pointerId: e.pointerId, pointerType: e.pointerType, P, kind,
-      smoother: new Smoother(), drawn: 0, lastScreen: this._local(e),
-      erased: [], lastU: null,
-      stroke: kind === 'eraser' ? null : {
+      pointerId: e.pointerId, pointerType: e.pointerType, P, kind, lasso,
+      eraseMode: this.tool.mode === 'part' ? 'part' : 'stroke', before: kind === 'eraser' && this.tool.mode === 'part' ? P.strokes.map(snap) : null,
+      smoother: new Smoother(), drawn: 0, lastScreen: pt,
+      erased: [], lastU: null, splitChanged: false,
+      stroke: kind === 'eraser' || kind === 'lasso' ? null : {
         id: strokeId(), type: kind === 'highlighter' ? 'h' : 'p',
         color: isHexColor(this.tool.color) ? this.tool.color.toLowerCase() : this.tool.color | 0, width: kind === 'highlighter' ? 0 : this.tool.width | 0, pts: null,
       },
@@ -808,6 +1032,10 @@ class Surface extends EventTarget {
       this._eraseAt(hit.ux, hit.uy);
       return;
     }
+    if (d.kind === 'lasso') {
+      this._lassoSample(hit.ux, hit.uy);
+      return;
+    }
     d.smoother.push(hit.ux, hit.uy, p);
     d.lastRaw = { x: hit.ux, y: hit.uy, p };
   }
@@ -824,6 +1052,11 @@ class Surface extends EventTarget {
       const s = P.strokes[i];
       const b = bbox(s);
       if (b[2] < x0 || b[0] > x1 || b[3] < y0 || b[1] > y1) continue;
+      if (d.eraseMode === 'part') {
+        const pieces = eraseSplit(s, a.x, a.y, ux, uy, r);
+        if (pieces) { P.strokes.splice(i, 1, ...pieces); removed = true; d.splitChanged = true; }
+        continue;
+      }
       if (hitTestSegment(s, a.x, a.y, ux, uy, r)) {
         d.erased.push({ stroke: s, index: i });
         P.strokes.splice(i, 1);
@@ -841,6 +1074,24 @@ class Surface extends EventTarget {
   _drawLive() {
     const d = this.drawing;
     const ctx = this.liveCtx;
+    if (d.kind === 'lasso') {
+      if (d.lasso.mode !== 'new') return;
+      const path = d.lasso.path;
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(0, 0, this.live.width, this.live.height);
+      if (path.length < 4) return;
+      this._liveTransform(ctx, d.P);
+      ctx.beginPath();
+      ctx.moveTo(path[0], path[1]);
+      for (let i = 2; i < path.length; i += 2) ctx.lineTo(path[i], path[i + 1]);
+      const px = 1 / (this.z * this.k); // 1 CSS px in page units
+      ctx.setLineDash([6 * px, 5 * px]);
+      ctx.lineWidth = 1.5 * px;
+      ctx.strokeStyle = '#2f5fd0';
+      ctx.stroke();
+      ctx.setLineDash([]);
+      return;
+    }
     if (d.kind === 'eraser') {
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.clearRect(0, 0, this.live.width, this.live.height);
@@ -876,9 +1127,14 @@ class Surface extends EventTarget {
     const d = this.drawing;
     if (!d) return;
     this.drawing = null;
-    if (d.kind === 'eraser') {
+    if (d.kind === 'lasso') {
       this._clearLive();
-      if (d.erased.length) this._pushHistory({ type: 'erase', pageId: d.P.id, items: d.erased });
+      this._lassoEnd(d);
+    } else if (d.kind === 'eraser') {
+      this._clearLive();
+      if (d.eraseMode === 'part') {
+        if (d.splitChanged) this._pushHistory({ type: 'replace', pageId: d.P.id, before: d.before, after: d.P.strokes.map(snap) });
+      } else if (d.erased.length) this._pushHistory({ type: 'erase', pageId: d.P.id, items: d.erased });
     } else {
       if (d.lastRaw) d.smoother.finish(d.lastRaw.x, d.lastRaw.y, d.lastRaw.p);
       const stroke = d.stroke;

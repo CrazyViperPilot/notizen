@@ -51,6 +51,14 @@ export function applyPushResult(kind, local, sentLrev, result) {
   return { action: 'put', row: merged };
 }
 
+/** Base64 of a Blob (chunked, works for large images). */
+export async function blobToBase64(blob) {
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  let s = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  return btoa(s);
+}
+
 /** Orders folders by depth (root first), using all local folders to compute the depth. */
 export function sortFoldersParentsFirst(rows, allFolders) {
   const parent = new Map(allFolders.map((f) => [f.id, f.parent_id]));
@@ -118,7 +126,8 @@ class SyncEngine {
         this.again = false;
         if (typeof navigator !== 'undefined' && navigator.onLine === false) throw new ApiError(0, 'network', 'Offline');
         this._set({ state: 'syncing' });
-        await this._push();
+        const pendingAssets = await this._uploadAssets();
+        await this._push(pendingAssets);
         await this._pull();
         await this._fetchStrokes();
       } while (this.again && !this.stopped);
@@ -155,7 +164,24 @@ class SyncEngine {
     if (n !== this.status.pending || failed !== this.status.failed) this._set({ pending: n, failed });
   }
 
-  async _dirtyRows() {
+  /** Uploads background images not yet on the server. Returns the ids still pending (their pages must wait). */
+  async _uploadAssets() {
+    const pending = new Set();
+    const list = await this.db.byIndex('assets', 'uploaded', 0);
+    for (const a of list) {
+      try {
+        await this.api.post('asset_put', { id: a.id, mime: a.mime || 'image/jpeg', w: a.w, h: a.h, data: await blobToBase64(a.blob) });
+        await this.db.put('assets', { ...a, uploaded: 1 });
+      } catch (e) {
+        if (e instanceof ApiError && e.status === 0) throw e; // offline: whole cycle fails, retried later
+        pending.add(a.id);
+        this._set({ error: e.message || String(e) });
+      }
+    }
+    return pending;
+  }
+
+  async _dirtyRows(pendingAssets = new Set()) {
     return this.db.tx(['folders', 'notes', 'pages'], 'readonly', async (h) => {
       const out = [];
       for (const kind of KINDS) {
@@ -164,6 +190,7 @@ class SyncEngine {
         if (kind === 'folder') rows = sortFoldersParentsFirst(rows, await h.folders.all());
         for (const row of rows) {
           if (kind === 'page' && typeof row.strokes !== 'string') continue; // not loaded yet: never push blank ink
+          if (kind === 'page' && row.bg && pendingAssets.has(row.bg)) continue; // its image is not on the server yet
           out.push({ kind, row });
         }
       }
@@ -171,9 +198,9 @@ class SyncEngine {
     });
   }
 
-  async _push() {
+  async _push(pendingAssets) {
     for (let round = 0; round < 1000; round++) {
-      const rows = await this._dirtyRows();
+      const rows = await this._dirtyRows(pendingAssets);
       if (!rows.length) return;
       const batch = [];
       let bytes = 0;

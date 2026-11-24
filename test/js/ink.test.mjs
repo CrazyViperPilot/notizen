@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { encodeStrokes, decodeStrokes, strokeId } from '../../js/ink/codec.js';
 import { Smoother, smoothPoints, penShapes, penRadius, hitTest, hitTestSegment, bbox, normPressure } from '../../js/ink/stroke.js';
 import { paperGeometry } from '../../js/ink/paper.js';
+import { eraseSplit } from '../../js/ink/stroke.js';
 import { PAGE, PAPER_STYLE } from '../../js/config.js';
 
 const line = (x0, y0, x1, y1, n = 10, p = 128) => {
@@ -156,4 +157,97 @@ test('vocab layout: rows lie on the ruled lines below the heading, columns meet 
   assert.equal(L.rows[0][0], PAPER_STYLE.vocabTop);
   const lineYs = new Set(); for (let i = 1; i < g.lines.length; i += 4) lineYs.add(g.lines[i]);
   for (const [y0, y1] of L.rows) { assert.ok(lineYs.has(y0) && lineYs.has(y1)); }
+});
+
+// --- Teil-Radierer (eraseSplit, ARCHITEKTUR 10.3) ---
+
+test('eraseSplit: quer durchradiert → 2 Teile, außerhalb des Radiers, Endpunkte korrekt', () => {
+  const st = { id: 'orig0001', type: 'p', color: 0, width: 1, pts: line(0, 0, 900, 0, 10, 100) };
+  const res = eraseSplit(st, 450, -100, 450, 100, 20);
+  assert.equal(res.length, 2);
+  for (const piece of res) {
+    assert.ok(piece.pts instanceof Int32Array);
+    assert.ok(piece.pts.length >= 6 && piece.pts.length % 3 === 0);
+    for (let i = 0; i < piece.pts.length; i += 3) {
+      assert.ok(Math.abs(piece.pts[i] - 450) > 20, `Punkt ${piece.pts[i]} liegt im Radierer`);
+      assert.equal(piece.pts[i + 2], 100, 'Druck bleibt erhalten');
+    }
+  }
+  const a = res[0].pts, b = res[1].pts;
+  assert.deepEqual([a[0], a[1]], [0, 0]);
+  assert.deepEqual([b[b.length - 3], b[b.length - 2]], [900, 0]);
+  assert.ok(a[a.length - 3] < 430 && b[0] > 470);
+});
+
+test('eraseSplit: Strich nicht berührt → null', () => {
+  const st = { id: 'orig0002', type: 'p', color: 0, width: 1, pts: line(0, 0, 900, 0, 10) };
+  assert.equal(eraseSplit(st, 450, 300, 450, 400, 20), null);      // Bounding-Box-Ausschluss
+  const sparse = { id: 'orig0003', type: 'p', color: 0, width: 1, pts: line(0, 0, 1000, 0, 2) };
+  assert.equal(eraseSplit(sparse, 500, 5, 500, 5, 2), null);       // Bounding-Box überlappt, kein Punkt getroffen
+});
+
+test('eraseSplit: Radierer am Ende → 1 Teil', () => {
+  const st = { id: 'orig0004', type: 'p', color: 0, width: 1, pts: line(0, 0, 900, 0, 10) };
+  const res = eraseSplit(st, 900, 0, 900, 0, 30);
+  assert.equal(res.length, 1);
+  assert.deepEqual([res[0].pts[0], res[0].pts[1]], [0, 0]);
+  assert.ok(res[0].pts[res[0].pts.length - 3] < 870);
+});
+
+test('eraseSplit: ganzer Strich im Radierer → []', () => {
+  const st = { id: 'orig0005', type: 'p', color: 0, width: 1, pts: line(100, 0, 200, 0, 5) };
+  assert.deepEqual(eraseSplit(st, 150, 0, 150, 0, 500), []);
+  const dot = { id: 'orig0006', type: 'p', color: 0, width: 1, pts: Int32Array.from([100, 100, 128]) };
+  assert.deepEqual(eraseSplit(dot, 100, 100, 100, 100, 5), []);
+  assert.equal(eraseSplit(dot, 300, 100, 300, 100, 5), null);
+});
+
+test('eraseSplit: dünn abgetasteter Strich (2 Punkte, 1000 auseinander) in der Mitte → 2 Teile', () => {
+  const st = { id: 'orig0007', type: 'p', color: 0, width: 1, pts: line(0, 0, 1000, 0, 2) };
+  const res = eraseSplit(st, 500, -50, 500, 50, 10);
+  assert.equal(res.length, 2);
+  for (const piece of res) {
+    for (let i = 0; i < piece.pts.length; i += 3) assert.ok(Math.abs(piece.pts[i] - 500) > 10);
+  }
+  assert.deepEqual([res[0].pts[0], res[0].pts[1]], [0, 0]);
+  assert.deepEqual([res[1].pts[res[1].pts.length - 3], res[1].pts[res[1].pts.length - 2]], [1000, 0]);
+});
+
+test('eraseSplit: Reste mit weniger als 2 Punkten entfallen', () => {
+  const st = { id: 'orig0008', type: 'p', color: 0, width: 1, pts: line(0, 0, 100, 0, 2) };
+  assert.deepEqual(eraseSplit(st, 50, 0, 50, 0, 45), []);
+});
+
+test('eraseSplit: Textmarker behält type und color', () => {
+  const st = { id: 'hl000002', type: 'h', color: '#ffe600', width: 0, pts: line(0, 0, 900, 0, 10) };
+  const res = eraseSplit(st, 450, 0, 450, 0, 20);
+  assert.equal(res.length, 2);
+  for (const piece of res) {
+    assert.equal(piece.type, 'h');
+    assert.equal(piece.color, '#ffe600');
+    assert.equal(piece.width, 0);
+  }
+});
+
+test('eraseSplit: Farbe als Hex-String (#ff8000) bleibt erhalten, Stift-Breite bleibt', () => {
+  const st = { id: 'orig0009', type: 'p', color: '#ff8000', width: 2, pts: line(0, 0, 900, 0, 10) };
+  const res = eraseSplit(st, 450, 0, 450, 0, 20);
+  assert.equal(res.length, 2);
+  for (const piece of res) {
+    assert.equal(piece.color, '#ff8000');
+    assert.equal(piece.width, 2);
+    assert.equal(piece.type, 'p');
+  }
+});
+
+test('eraseSplit: neue ids verschieden vom Original und voneinander, kein gecachtes _bb', () => {
+  const st = { id: 'orig0010', type: 'p', color: 0, width: 1, pts: line(0, 0, 900, 0, 10) };
+  const res = eraseSplit(st, 450, 0, 450, 0, 20);
+  assert.equal(res.length, 2);
+  for (const piece of res) {
+    assert.match(piece.id, /^[a-z0-9]{8}$/);
+    assert.notEqual(piece.id, 'orig0010');
+    assert.equal(piece._bb, undefined);
+  }
+  assert.notEqual(res[0].id, res[1].id);
 });

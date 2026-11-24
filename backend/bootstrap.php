@@ -31,7 +31,7 @@ function set_config(array $c)
 }
 
 // Modules in a fixed order; later work packages add files, missing ones are skipped.
-foreach (['auth', 'account', 'sync', 'tree', 'share', 'admin'] as $m) {
+foreach (['auth', 'account', 'sync', 'tree', 'share', 'assets', 'admin'] as $m) {
     if (is_file(__DIR__ . '/' . $m . '.php')) require_once __DIR__ . '/' . $m . '.php';
 }
 
@@ -71,6 +71,8 @@ function dispatch()
             else $u = require_user($access === 'user_any');
             $result = call_user_func($route['handler'], $u);
         }
+        // Binary responses (assets): api.php writes them raw, without the JSON envelope.
+        if (is_array($result) && array_key_exists('__raw', $result)) return [200, $result];
         return [200, ['ok' => true] + ($result ?: [])];
     } catch (HttpError $e) {
         return [$e->status, ['error' => ['code' => $e->errCode, 'message' => $e->getMessage()]]];

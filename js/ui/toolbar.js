@@ -7,14 +7,15 @@ import { h, menu, promptText } from './dom.js';
 
 const PREFS_KEY = 'notizen:prefs';
 const SVG_NS = 'http://www.w3.org/2000/svg';
-const KINDS = ['pen', 'highlighter', 'eraser'];
-const KIND_NAMES = { pen: 'Stift', highlighter: 'Textmarker', eraser: 'Radierer' };
+const KINDS = ['pen', 'highlighter', 'eraser', 'lasso'];
+const KIND_NAMES = { pen: 'Stift', highlighter: 'Textmarker', eraser: 'Radierer', lasso: 'Lasso (auswählen)' };
 const WIDTH_DOTS = [7, 11, 17];   // dot diameter in px for PEN_WIDTHS (fein, mittel, dick)
 
 const ICONS = {
   pen: [{ d: 'M4 20l1.1-4.4L15.6 5a2 2 0 0 1 2.8 0l.6.6a2 2 0 0 1 0 2.8L8.4 19z' }, { d: 'M13.8 6.8l3.4 3.4' }],
   highlighter: [{ d: 'M5 21h14', w: 5, o: 0.45 }, { d: 'M8 15l6.8-8.6 3.2 2.5L11.2 17.5z' }],
   eraser: [{ d: 'M4.5 16.5L12 9l5 5-5.5 5.5H8.5z' }, { d: 'M11 19.5h9' }],
+  lasso: [{ d: 'M12 4c4.4 0 8 2.2 8 5s-3.6 5-8 5-8-2.2-8-5 3.6-5 8-5z', dash: true }, { d: 'M7 13c-1 2 0 4 2 4.5s2.5 2 1.5 3.5' }],
 };
 
 function icon(kind) {
@@ -31,6 +32,7 @@ function icon(kind) {
     e.setAttribute('stroke-linecap', 'round');
     e.setAttribute('stroke-linejoin', 'round');
     if (p.o) e.setAttribute('stroke-opacity', String(p.o));
+    if (p.dash) e.setAttribute('stroke-dasharray', '3 2.5');
     s.append(e);
   }
   return s;
@@ -75,6 +77,7 @@ export function createToolbar({ onTool, onUndo, onRedo, onBack, onTitle, onPageM
       color: hlColorOf(saved.highlighter && saved.highlighter.color),
       custom: customOf(saved.highlighter, DEFAULT_CUSTOM_HL_COLOR),
     },
+    eraser: { mode: saved.eraser && saved.eraser.mode === 'part' ? 'part' : 'stroke' },
   };
   let pageInfo = { i: 0, n: 0, page: null };
   let titleText = '';
@@ -82,12 +85,13 @@ export function createToolbar({ onTool, onUndo, onRedo, onBack, onTitle, onPageM
   const current = () => {
     if (kind === 'pen') return { kind, color: mem.pen.color, width: mem.pen.width };
     if (kind === 'highlighter') return { kind, color: mem.highlighter.color, width: 0 };
-    return { kind: 'eraser', color: 0, width: 0 };
+    if (kind === 'lasso') return { kind, color: 0, width: 0 };
+    return { kind: 'eraser', color: 0, width: 0, mode: mem.eraser.mode };
   };
 
   const persist = () => {
     const p = readPrefs();
-    p.tool = { kind, pen: { ...mem.pen }, highlighter: { ...mem.highlighter } };
+    p.tool = { kind, pen: { ...mem.pen }, highlighter: { ...mem.highlighter }, eraser: { ...mem.eraser } };
     writePrefs(p);
   };
 
@@ -157,8 +161,19 @@ export function createToolbar({ onTool, onUndo, onRedo, onBack, onTitle, onPageM
       b.setAttribute('aria-pressed', on ? 'true' : 'false');
     }
     styleEl.replaceChildren();
-    styleEl.hidden = kind === 'eraser';
-    if (kind === 'eraser') return;
+    styleEl.hidden = kind === 'lasso';
+    if (kind === 'lasso') return;
+    if (kind === 'eraser') {
+      // Eraser modes: whole strokes or only the touched part.
+      for (const [mode, label] of [['stroke', 'Ganze Striche'], ['part', 'Teilweise']]) {
+        const on = mem.eraser.mode === mode;
+        styleEl.append(h('button', {
+          type: 'button', className: 'tb-btn tb-mode' + (on ? ' on' : ''), text: label, 'aria-pressed': on ? 'true' : 'false',
+          onclick: () => { mem.eraser.mode = mode; emit(); },
+        }));
+      }
+      return;
+    }
     const isPen = kind === 'pen';
     const colors = isPen ? PEN_COLORS : HL_COLORS;
     const names = isPen ? PEN_COLOR_NAMES : HL_COLOR_NAMES;
@@ -199,13 +214,13 @@ export function createToolbar({ onTool, onUndo, onRedo, onBack, onTitle, onPageM
 
   function applyCustom(v) {
     if (!isHexColor(v)) return;
-    if (kind === 'eraser') return;
+    if (kind !== 'pen' && kind !== 'highlighter') return;
     mem[kind].custom = v.toLowerCase();
     setColor(mem[kind].custom);
   }
 
   function openCustomColor() {
-    if (kind === 'eraser') return;
+    if (kind !== 'pen' && kind !== 'highlighter') return;
     setColor(mem[kind].custom);
     colorInput.value = mem[kind].custom;
     try {
@@ -234,11 +249,15 @@ export function createToolbar({ onTool, onUndo, onRedo, onBack, onTitle, onPageM
       onSelect: () => onPageMenu('orient', code),
     }));
     menu(anchor, [
+      { label: 'Seitenübersicht', icon: '▦', onSelect: () => onPageMenu('overview') },
+      { label: 'Foto oder PDF einfügen…', icon: '🖼', onSelect: () => onPageMenu('import') },
+      'sep',
       ...paperItems,
       'sep',
       ...orientItems,
       'sep',
       { label: 'Als PDF exportieren', icon: ' ', onSelect: () => onPageMenu('pdf') },
+      { label: 'Seite duplizieren', icon: ' ', onSelect: () => onPageMenu('duplicate') },
       'sep',
       { label: 'Seite löschen', icon: ' ', danger: true, onSelect: () => onPageMenu('delete') },
     ]);
@@ -260,6 +279,7 @@ export function createToolbar({ onTool, onUndo, onRedo, onBack, onTitle, onPageM
     if (key === 'p') selectKind('pen');
     else if (key === 'h') selectKind('highlighter');
     else if (key === 'e') selectKind('eraser');
+    else if (key === 'l') selectKind('lasso');
     else return;
     e.preventDefault();
   }
@@ -295,6 +315,8 @@ export function createToolbar({ onTool, onUndo, onRedo, onBack, onTitle, onPageM
         mem.pen.width = idx(t.width, PEN_WIDTHS.length);
       } else if (kind === 'highlighter') {
         mem.highlighter.color = hlColorOf(t.color);
+      } else if (kind === 'eraser' && (t.mode === 'part' || t.mode === 'stroke')) {
+        mem.eraser.mode = t.mode;
       }
       persist();
       render();

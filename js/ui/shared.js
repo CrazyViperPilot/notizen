@@ -163,7 +163,8 @@ export async function mountSharedNote(el, { noteId }, ctx) {
     msg,
     canvas);
 
-  const surface = createSurface(canvas, { readOnly: true });
+  // Hintergrundbilder (ARCHITEKTUR 10.1): lokal bzw. per asset_get mit note (Lesezugriff auf die geteilte Notiz)
+  const surface = createSurface(canvas, { readOnly: true, getImage: (id) => ctx.model.getImage(id, { noteId }) });
   surface.addEventListener('pagechange', onPage);
 
   load();
@@ -244,7 +245,18 @@ export async function mountSharedNote(el, { noteId }, ctx) {
         return;
       }
       try {
-        const blob = await pdf.notePdf(note, pages);
+        // Hintergrundbilder immer über den Server mit note (Lesezugriff); nicht ladbar → Seite ohne Bild
+        const getAssetBytes = async (id) => {
+          try {
+            const local = await ctx.model.getAsset(id); // cached by getImage → also works offline
+            if (local && local.blob) return new Uint8Array(await local.blob.arrayBuffer());
+            const b = await api.blob('asset_get', { id, note: noteId });
+            return new Uint8Array(await b.arrayBuffer());
+          } catch {
+            return null;
+          }
+        };
+        const blob = await pdf.notePdf(note, pages, { getAssetBytes });
         await save.saveFile(blob, fileName(note.title) + '.pdf');
       } catch (e) {
         if (e && e.name === 'AbortError') return;   // Teilen-Menü abgebrochen

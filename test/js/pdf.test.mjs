@@ -6,7 +6,7 @@ import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { inflateSync } from 'node:zlib';
-import { buildPdf, notePdf } from '../../js/export/pdf.js';
+import { buildPdf, notePdf, jpegInfo } from '../../js/export/pdf.js';
 import { encodeStrokes, decodeStrokes } from '../../js/ink/codec.js';
 
 const TITLE = 'Übung Größe ÄÖÜ ß 𝄞';
@@ -180,4 +180,117 @@ test('pdf: custom pen color is written as rgb', async () => {
   const strokes = JSON.stringify([{ i: 'x', t: 'p', c: '#ff8000', w: 1, p: [100, 100, 128, 50, 0, 0] }]);
   const pdf = new TextDecoder('latin1').decode(buildPdf([{ paper: 'blank', orient: 'p', strokes }], { title: 'Farbe' }));
   assert.ok(pdf.includes('1.000 0.502 0.000 rg'), 'Farbe #ff8000 im Content-Stream');
+});
+
+// ───────── Hintergrundbilder (ARCHITEKTUR 10.1) ─────────
+
+// Echtes 1×1-Graustufen-JPEG
+const JPEG_B64 = '/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wgALCAABAAEBAREA/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxA=';
+const JPEG = new Uint8Array(Buffer.from(JPEG_B64, 'base64'));
+const ASSET = 'a'.repeat(64);   // Asset-id (SHA-256-Form, für den PDF-Writer belanglos)
+const ASSET2 = 'b'.repeat(64);
+
+/** Minimaler JPEG-Kopf mit SOF0 (nur für jpegInfo und die PDF-Struktur, nicht dekodierbar). */
+function fakeJpeg(w, h, comps) {
+  const sof = [0xff, 0xc0, 0x00, 8 + 3 * comps, 8, h >> 8, h & 255, w >> 8, w & 255, comps];
+  for (let c = 1; c <= comps; c++) sof.push(c, 0x11, 0);
+  return new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x04, 0x00, 0x00, ...sof, 0xff, 0xd9]);
+}
+
+test('jpegInfo: Maße und Komponenten aus dem SOF-Segment, sonst null', () => {
+  assert.deepEqual(jpegInfo(JPEG), { w: 1, h: 1, comps: 1 });
+  assert.deepEqual(jpegInfo(fakeJpeg(640, 480, 3)), { w: 640, h: 480, comps: 3 });
+  assert.deepEqual(jpegInfo(fakeJpeg(10, 20, 4)), { w: 10, h: 20, comps: 4 });
+  assert.equal(jpegInfo(new Uint8Array([1, 2, 3, 4])), null, 'kein JPEG');
+  assert.equal(jpegInfo(fakeJpeg(10, 20, 2)), null, 'Komponentenzahl 2 wird nicht unterstützt');
+  assert.equal(jpegInfo(new Uint8Array([0xff, 0xd8, 0xff, 0xda, 0, 2])), null, 'SOS vor SOF');
+});
+
+test('buildPdf: Seite mit Hintergrundbild bettet das JPEG unverändert als DCTDecode-Bild ein', () => {
+  const pages = [{ paper: 'lined', orient: 'p', strokes: null, bg: ASSET }];
+  const bytes = buildPdf(pages, { title: 'Bild', images: new Map([[ASSET, JPEG]]) });
+  const s = latin1(bytes);
+  assert.match(s, /\/Subtype \/Image \/Width 1 \/Height 1 \/ColorSpace \/DeviceGray \/BitsPerComponent 8 \/Filter \/DCTDecode/);
+  assert.match(s, /\/XObject << \/Im1 7 0 R >>/);
+  assert.match(s, /q 595\.28 0 0 595\.28 0 123\.31 cm \/Im1 Do Q/, 'contain: 1×1 → 2100 × 2100 (0,1 mm), zentriert');
+  const offsets = checkXref(bytes);
+  assert.equal(offsets.length - 1, 7, '4 Basis + 1 Seite (Page + Content) + 1 Bild');
+  const img = streamOf(bytes, offsets, 7);
+  assert.equal(img.data, Buffer.from(JPEG).toString('latin1'), 'JPEG-Bytes unverändert');
+  // Reihenfolge: Weiß, Bild, Papierlinien
+  const c = streamOf(bytes, offsets, 6).data;
+  assert.ok(c.indexOf(' re f') < c.indexOf(' Do') && c.indexOf(' Do') < c.indexOf('0.35 w'), 'Weiß → Bild → Papier');
+});
+
+test('buildPdf: gleiches Asset auf zwei Seiten ergibt nur ein Bild-Objekt', () => {
+  const pages = [
+    { paper: 'blank', orient: 'p', strokes: null, bg: ASSET },
+    { paper: 'blank', orient: 'l', strokes: null, bg: ASSET },
+  ];
+  const bytes = buildPdf(pages, { title: 'zwei', images: { [ASSET]: JPEG } });
+  const s = latin1(bytes);
+  assert.equal((s.match(/\/Subtype \/Image/g) || []).length, 1, 'ein Image-XObject');
+  assert.equal((s.match(/\/Im1 9 0 R/g) || []).length, 2, 'beide Seiten verweisen auf Objekt 9 (5 + 2 × 2 Seitenobjekte)');
+  checkXref(bytes);
+});
+
+test('buildPdf: Seite ohne fehlendes Bild bleibt ohne Bild, zwei verschiedene Bilder je einmal', () => {
+  const pages = [
+    { paper: 'blank', orient: 'p', strokes: null, bg: ASSET },
+    { paper: 'blank', orient: 'p', strokes: null, bg: ASSET2 },    // nicht übergeben
+    { paper: 'blank', orient: 'p', strokes: null, bg: null },
+    { paper: 'blank', orient: 'p', strokes: null, bg: ASSET },
+  ];
+  const bytes = buildPdf(pages, { title: 'x', images: new Map([[ASSET, JPEG]]) });
+  const s = latin1(bytes);
+  assert.equal((s.match(/\/Subtype \/Image/g) || []).length, 1);
+  assert.equal((s.match(/\/Resources 4 0 R/g) || []).length, 2, 'Seiten ohne Bild nutzen die gemeinsamen Ressourcen');
+  checkXref(bytes);
+});
+
+test('buildPdf: CMYK- und RGB-JPEG bekommen den passenden Farbraum', () => {
+  const cmyk = buildPdf([{ paper: 'blank', orient: 'p', strokes: null, bg: ASSET }], { images: { [ASSET]: fakeJpeg(64, 64, 4) } });
+  const s = latin1(cmyk);
+  assert.match(s, /\/ColorSpace \/DeviceCMYK \/BitsPerComponent 8 \/Decode \[1 0 1 0 1 0 1 0\] \/Filter \/DCTDecode/);
+  checkXref(cmyk);
+  const rgb = latin1(buildPdf([{ paper: 'blank', orient: 'p', strokes: null, bg: ASSET }], { images: { [ASSET]: fakeJpeg(64, 32, 3) } }));
+  assert.match(rgb, /\/Width 64 \/Height 32 \/ColorSpace \/DeviceRGB/);
+});
+
+test('notePdf: Bild über getAssetBytes, jedes Asset nur einmal geholt, fehlendes Bild → Seite ohne Bild', async () => {
+  const asked = [];
+  const getAssetBytes = async (id) => { asked.push(id); return id === ASSET ? JPEG : null; };
+  const pages = [
+    { paper: 'lined', orient: 'p', strokes: encodeStrokes([penA]), bg: ASSET },
+    { paper: 'lined', orient: 'p', strokes: null, bg: ASSET },
+    { paper: 'lined', orient: 'p', strokes: null, bg: ASSET2 },
+  ];
+  const blob = await notePdf({ title: 'Bilder' }, pages, { getAssetBytes });
+  assert.deepEqual(asked, [ASSET, ASSET2], 'je Asset einmal');
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  const s = latin1(bytes);
+  assert.equal((s.match(/\/Subtype \/Image/g) || []).length, 1);
+  assert.match(s, /\/Count 3 /);
+  assert.equal((s.match(/\/Resources 4 0 R/g) || []).length, 1, 'nur die Seite mit fehlendem Bild ohne Bild');
+  const offsets = checkXref(bytes);
+  const img = streamOf(bytes, offsets, 5 + 2 * 3);
+  assert.equal(img.data, Buffer.from(JPEG).toString('latin1'));
+});
+
+test('notePdf: ohne getAssetBytes entstehen Seiten ohne Bild; Fehler beim Laden lässt die Seite ohne Bild', async () => {
+  const plain = await notePdf({ title: 'x' }, [{ paper: 'blank', orient: 'p', strokes: null, bg: ASSET }]);
+  assert.doesNotMatch(latin1(new Uint8Array(await plain.arrayBuffer())), /\/Subtype \/Image/);
+  const failing = await notePdf({ title: 'x' }, [{ paper: 'blank', orient: 'p', strokes: null, bg: ASSET }], {
+    getAssetBytes: async () => { throw new Error('offline'); },
+  });
+  assert.doesNotMatch(latin1(new Uint8Array(await failing.arrayBuffer())), /\/Subtype \/Image/);
+});
+
+test('buildPdf: Bild mit Querformat-Seite wird contain eingepasst', () => {
+  // 1×1 auf Querformat (2970 × 2100): Quadrat 2100 × 2100, horizontal zentriert
+  const bytes = buildPdf([{ paper: 'blank', orient: 'l', strokes: null, bg: ASSET }], { images: { [ASSET]: JPEG } });
+  const s = latin1(bytes);
+  // x = (2970 − 2100) / 2 = 435 (0,1 mm) → 123.31 pt; y von unten: (2100 − 2100) = 0
+  assert.match(s, /q 595\.28 0 0 595\.28 123\.31 0 cm \/Im1 Do Q/);
+  checkXref(bytes);
 });

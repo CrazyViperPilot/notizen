@@ -97,3 +97,20 @@ Playwright-Tests (`test/e2e/`), Sicherheits-Review, Leistungstest (2.000 Striche
 1. Bei dogado eine MySQL/MariaDB-Datenbank anlegen.
 2. Repository-Secrets in **diesem** Repo setzen: `FTP_SERVER`, `FTP_USER`, `FTP_PASSWORD` (FTP-Login startet im Web-Ordner `/notizen`), `NOTIZEN_DB_HOST`, `NOTIZEN_DB_PORT`, `NOTIZEN_DB_NAME`, `NOTIZEN_DB_USER`, `NOTIZEN_DB_PASSWORD`,
    `NOTIZEN_ADMIN_USER`, `NOTIZEN_ADMIN_PASSWORD`.
+
+
+---
+
+# Runde 2 (Nov 2026): Lasso, Teil-Radierer, Seitenübersicht, Arbeitsblätter
+Verbindlich: ARCHITEKTUR Abschnitt 10. Push nach `main` erst, wenn alles fertig und geprüft ist.
+
+| Paket | Inhalt | Wer |
+|---|---|---|
+| P15 | Asset-Backend: Migration 003, `backend/assets.php`, `bg` im Sync, Binärantworten, Bereinigung, Tests | Haiku |
+| P16 | `eraseSplit` in `js/ink/stroke.js` + Tests | Haiku |
+| P17 | Client-Grundlage: IndexedDB v2, Assets in model/sync/api, `movePage`, `duplicatePage`, Surface `getImage` + Hintergrund-Rendering, Leiste/Editor-Anschlüsse | Opus |
+| P18 | Lasso + Teil-Radierer in der Surface, Werkzeugleiste | Opus |
+| P19 | Seitenübersicht `js/ui/pages.js` | Haiku |
+| P20 | Import `js/import/importer.js` + pdf.js (vendored) | Haiku |
+| P21 | Hintergrundbilder in PDF-Export, Vorschaubildern, Backup v2, geteilter Ansicht und Admin-Ansicht | Haiku |
+| P22 | Integration, E2E, Review, Push | Opus |

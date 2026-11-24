@@ -5,13 +5,15 @@ if (!defined('NZ_ENTRY')) { http_response_code(403); exit; }
 // Invariants:
 // - Every write to a folder/note/page row gets a fresh, unique seq = ++users.seq (users row locked FOR UPDATE).
 // - rev counts accepted versions of a row; clients send base_rev = the rev their change is based on.
-// - users.used_bytes = SUM(pages.bytes) over the user's pages with purged = 0 (trash counts).
+// - users.used_bytes = SUM(pages.bytes) over the user's pages with purged = 0 (trash counts) + SUM(assets.bytes).
+// - pages.bg (background asset) must reference an asset of the same user that is already uploaded (missing_asset).
 
 const NZ_SYNC_MAX_CHANGES = 50;
 const NZ_SYNC_MAX_STROKES = 8388608;    // 8 MB per page
 const NZ_PULL_MAX_BYTES = 4194304;      // soft cap per pull/pages response
 const NZ_TRASH_MS = 2592000000;         // 30 days
 const NZ_CLEANUP_EVERY_MS = 86400000;   // once per day and user
+const NZ_ASSET_GRACE_MS = 86400000;     // unused assets are removed after one day
 
 function sync_kinds()
 {
@@ -66,6 +68,9 @@ function sync_clean($kind, $d)
         $c['pos'] = (float)$pos;
         $c['paper'] = isset($d['paper']) && in_array($d['paper'], ['blank', 'lined', 'grid', 'dotted', 'vocab'], true) ? $d['paper'] : fail(400, 'invalid', 'Papier ungültig.');
         $c['orient'] = isset($d['orient']) && in_array($d['orient'], ['p', 'l'], true) ? $d['orient'] : fail(400, 'invalid', 'Ausrichtung ungültig.');
+        $bg = isset($d['bg']) ? $d['bg'] : null;
+        if ($bg !== null && !asset_id_valid($bg)) fail(400, 'invalid', 'Bild ungültig.');
+        $c['bg'] = $bg;
         $s = isset($d['strokes']) ? $d['strokes'] : '[]';
         if (!is_string($s)) fail(400, 'invalid', 'Striche ungültig.');
         if (strlen($s) > NZ_SYNC_MAX_STROKES) fail(413, 'page_too_large', 'Die Seite ist zu groß.');
@@ -83,7 +88,7 @@ function sync_blank($kind, array $c)
 {
     if ($kind === 'folder') $c['name'] = '';
     if ($kind === 'note') $c['title'] = '';
-    if ($kind === 'page') { $c['strokes'] = '[]'; $c['bytes'] = 0; }
+    if ($kind === 'page') { $c['strokes'] = '[]'; $c['bytes'] = 0; $c['bg'] = null; }
     return $c;
 }
 
@@ -106,6 +111,7 @@ function sync_row_out($kind, array $r, $withStrokes)
         $o['pos'] = (float)$r['pos'];
         $o['paper'] = $r['paper'];
         $o['orient'] = $r['orient'];
+        $o['bg'] = $r['bg'];
         $o['conflict'] = (int)$r['conflict'];
         $o['bytes'] = (int)$r['bytes'];
         if ($withStrokes) $o['strokes'] = $r['strokes'];
@@ -239,10 +245,20 @@ function row_cols($kind, array $row)
     $keep = ['created_at', 'updated_at', 'deleted_at', 'purged', sync_kinds()[$kind]['parent']];
     if ($kind === 'folder') $keep[] = 'name';
     if ($kind === 'note') $keep[] = 'title';
-    if ($kind === 'page') $keep = array_merge($keep, ['pos', 'paper', 'orient', 'strokes', 'bytes', 'conflict']);
+    if ($kind === 'page') $keep = array_merge($keep, ['pos', 'paper', 'orient', 'bg', 'strokes', 'bytes', 'conflict']);
     $c = [];
     foreach ($keep as $k) $c[$k] = $row[$k];
     return $c;
+}
+
+/** A page may only point to a background asset that is uploaded, or to the one it already has. */
+function sync_check_asset($kind, array $cols, $row, array $st)
+{
+    if ($kind !== 'page' || $cols['bg'] === null) return;
+    if ($row !== null && $row['bg'] === $cols['bg']) return;
+    if (one('SELECT 1 FROM {assets} WHERE user_id = ? AND id = ?', [$st['uid'], $cols['bg']]) === null) {
+        fail(409, 'missing_asset', 'Bild noch nicht hochgeladen.');
+    }
 }
 
 /** Applies one change. Returns a result entry. */
@@ -266,6 +282,7 @@ function sync_apply(array $ch, array &$st)
     }
 
     if (!$row) {
+        sync_check_asset($kind, $cols, null, $st);
         if ($kind === 'page' && $cols['bytes'] > 0 && $st['used'] + $cols['bytes'] > $st['quota']) fail(507, 'quota', 'Speicherplatz voll.');
         $cols = sync_check_parent($kind, $id, $cols, $st);
         $new = sync_store($kind, $id, $cols, $st, null);
@@ -274,6 +291,7 @@ function sync_apply(array $ch, array &$st)
 
     // Permanently deleted elsewhere: server wins, the client drops it.
     if ($row['purged']) return ['id' => $id, 'status' => 'conflict', 'row' => sync_row_out($kind, $row, true)];
+    sync_check_asset($kind, $cols, $row, $st);
 
     $grow = $kind === 'page' ? $cols['bytes'] - (int)$row['bytes'] : 0;
     $quotaOk = $grow <= 0 || $st['used'] + $grow <= $st['quota'];
@@ -358,7 +376,11 @@ function sync_cleanup(array &$st)
         $st['purge_floor'] = $st['seq'];
         $st['floor_changed'] = true;
     }
-    $st['used'] = (int)val('SELECT COALESCE(SUM(bytes), 0) FROM {pages} WHERE user_id = ? AND purged = 0', [$uid]);
+    // Assets that no non-purged page uses and that are older than the grace period.
+    q('DELETE a FROM {assets} a WHERE a.user_id = ? AND a.created_at < ? AND NOT EXISTS (SELECT 1 FROM {pages} p WHERE p.user_id = a.user_id AND p.bg = a.id AND p.purged = 0)',
+        [$uid, now_ms() - NZ_ASSET_GRACE_MS]);
+    $st['used'] = (int)val('SELECT COALESCE(SUM(bytes), 0) FROM {pages} WHERE user_id = ? AND purged = 0', [$uid])
+        + (int)val('SELECT COALESCE(SUM(bytes), 0) FROM {assets} WHERE user_id = ?', [$uid]);
     $st['last_purge_at'] = now_ms();
 }
 
@@ -387,7 +409,7 @@ function route_sync_pull($u)
     $cands = tx(function () use ($uid, $since, $limit) {
         $cands = [];
         foreach (sync_kinds() as $kind => $k) {
-            $cols = $kind === 'page' ? 'id, note_id, pos, paper, orient, bytes, conflict, created_at, updated_at, deleted_at, purged, rev, seq' : '*';
+            $cols = $kind === 'page' ? 'id, note_id, pos, paper, orient, bg, bytes, conflict, created_at, updated_at, deleted_at, purged, rev, seq' : '*';
             foreach (all("SELECT $cols FROM {" . $k['table'] . '} WHERE user_id = ? AND seq > ? ORDER BY seq LIMIT ' . ($limit + 1), [$uid, $since]) as $r) {
                 $cands[] = ['kind' => $kind, 'row' => $r];
             }

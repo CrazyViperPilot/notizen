@@ -23,6 +23,28 @@ const ACTION_TEXT = {
 };
 
 const root = document.getElementById('admin');
+
+// Hintergrundbilder der Notizansicht (ARCHITEKTUR 10.1): per asset_get mit note laden, dekodieren, im Speicher
+// merken. Beim Verlassen der Ansicht werden die Bitmaps wieder freigegeben (Speicher auf dem iPad).
+const imageCache = new Map(); // asset id → Promise<ImageBitmap|null>
+
+function adminImage(noteId, id) {
+  if (imageCache.has(id)) return imageCache.get(id);
+  const p = (async () => {
+    const blob = await api.blob('asset_get', { id, note: noteId });
+    return createImageBitmap(blob);
+  })().catch(() => {
+    imageCache.delete(id);   // nächster Versuch lädt erneut
+    return null;
+  });
+  imageCache.set(id, p);
+  return p;
+}
+
+function clearImages() {
+  for (const p of imageCache.values()) p.then((bm) => { if (bm && typeof bm.close === 'function') bm.close(); }, () => {});
+  imageCache.clear();
+}
 let me = null;          // angemeldeter Admin (user_public)
 let whoEl = null;       // „angemeldet als …“ in der Kopfzeile
 let mainEl = null;      // Inhaltsbereich unter den Reitern
@@ -476,6 +498,7 @@ function showNotes(u) {
   const stop = () => {
     seq++;
     if (surface) { surface.destroy(); surface = null; }
+    clearImages();
   };
   leaveView = stop;
 
@@ -493,7 +516,7 @@ function showNotes(u) {
         host.append(h('p', { className: 'viewer-empty muted', text: 'Diese Notiz hat keine Seiten.' }));
         return;
       }
-      surface = createSurface(host, { readOnly: true });
+      surface = createSurface(host, { readOnly: true, getImage: (id) => adminImage(note.id, id) });
       surface.setPages(res.pages);
     } catch (e) {
       if (my === seq) host.replaceChildren(h('p', { className: 'viewer-empty error-text', text: msg(e) }));

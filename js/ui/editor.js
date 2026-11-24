@@ -5,10 +5,12 @@
 // page are kept as a draft and merged with the server strokes once the page arrives (never overwrite server data).
 
 import * as model from '../model.js';
+import { api } from '../api.js';
 import { createSurface } from '../ink/surface.js';
 import { decodeStrokes, encodeStrokes } from '../ink/codec.js';
 import { createToolbar } from './toolbar.js';
-import { h, toast, confirmDialog } from './dom.js';
+import { h, toast, confirmDialog, dialog } from './dom.js';
+import { PEN_COLORS, PEN_COLOR_NAMES, HL_COLORS, HL_COLOR_NAMES } from '../config.js';
 
 const PREFS_KEY = 'notizen:prefs';
 const RELOAD_MS = 300;
@@ -75,6 +77,53 @@ export async function mountEditor(el, { noteId }, ctx) {
     h('button', { type: 'button', className: 'btn primary', text: 'Fertig', onclick: () => stopQuiz() }));
   el.replaceChildren(toolbar.el, h('div', { className: 'ed-body' }, holder, hint, quizBar));
 
+  // ───── lasso selection: action bar above the selection ─────
+  const selBar = h('div', { className: 'sel-bar', role: 'toolbar', 'aria-label': 'Auswahl', hidden: true });
+  el.querySelector('.ed-body').append(selBar);
+  let selInfo = null;
+
+  function renderSelBar(info) {
+    selInfo = info;
+    if (!info) { selBar.hidden = true; return; }
+    selBar.replaceChildren(
+      h('button', { type: 'button', className: 'btn', text: 'Farbe', onclick: () => pickSelColor() }),
+      h('button', { type: 'button', className: 'btn', text: 'Duplizieren', onclick: () => surface.selectionAction('duplicate') }),
+      h('button', { type: 'button', className: 'btn', text: 'Löschen', onclick: () => surface.selectionAction('delete') }));
+    selBar.hidden = false;
+    const r = info.rect;
+    const bodyW = holder.clientWidth;
+    selBar.style.left = Math.max(130, Math.min(bodyW - 130, r.x + r.w / 2)) + 'px';
+    selBar.style.top = Math.max(56, r.y - 12) + 'px';
+  }
+
+  async function pickSelColor() {
+    if (!selInfo) return;
+    const type = selInfo.hasPen ? 'p' : 'h';
+    const list = type === 'p' ? PEN_COLORS : HL_COLORS;
+    const names = type === 'p' ? PEN_COLOR_NAMES : HL_COLOR_NAMES;
+    const picker = h('input', { type: 'color', value: '#0a8f8f', className: 'tb-color-input' });
+    const r = await dialog({
+      title: type === 'p' ? 'Farbe der Auswahl' : 'Farbe der Markierung',
+      body: (close) => h('div', { className: 'sel-colors' },
+        list.map((c, i) => h('button', { type: 'button', className: 'sw', title: names[i], 'aria-label': names[i], style: { background: c }, onclick: () => close(i) })),
+        h('button', { type: 'button', className: 'sw', title: 'Eigene Farbe', 'aria-label': 'Eigene Farbe',
+          style: { background: 'conic-gradient(#ff3b30, #ffcc00, #34c759, #00c7be, #007aff, #af52de, #ff2d55, #ff3b30)' },
+          onclick: () => { picker.onchange = () => close(picker.value.toLowerCase()); try { picker.showPicker ? picker.showPicker() : picker.click(); } catch { picker.click(); } } }),
+        picker),
+      actions: [{ label: 'Abbrechen', value: null }],
+    });
+    if (r !== null && r !== undefined) surface.selectionAction('color', r, type);
+  }
+
+
+  function onSelKey(ev) {
+    if (!selInfo || (ev.key !== 'Backspace' && ev.key !== 'Delete')) return;
+    const a = document.activeElement;
+    if (a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA')) return;
+    ev.preventDefault();
+    surface.selectionAction('delete');
+  }
+
   function startQuiz(side) {
     quizSide = side;
     surface.setQuiz({ side });
@@ -90,7 +139,9 @@ export async function mountEditor(el, { noteId }, ctx) {
     toolbar.setQuiz(surface.hasVocab(), false);
   }
 
-  const surface = createSurface(holder, { fingerDraw: fingerDrawPref() });
+  const surface = createSurface(holder, { fingerDraw: fingerDrawPref(), getImage: (id) => model.getImage(id, { noteId }) });
+  surface.addEventListener('selection', (e) => renderSelBar(e.detail));
+  document.addEventListener('keydown', onSelKey);
   toolbar.setTitle(note.title);
   surface.setTool(toolbar.getTool());
 
@@ -167,6 +218,7 @@ export async function mountEditor(el, { noteId }, ctx) {
       id: p.id,
       paper: p.paper,
       orient: p.orient,
+      bg: p.bg || null,
       strokes: merged.has(p.id) ? merged.get(p.id) : (typeof p.strokes === 'string' ? p.strokes : '[]'),
     }));
     // keepView: the surface keeps unsaved local changes itself.
@@ -230,9 +282,19 @@ export async function mountEditor(el, { noteId }, ctx) {
 
   async function pageMenu(action, value) {
     if (action === 'pdf') return exportPdf();
+    if (action === 'overview') return openOverview();
+    if (action === 'import') return importFiles();
     const cur = currentPage();
     if (!cur) return;
     try {
+      if (action === 'duplicate') {
+        if (typeof cur.strokes !== 'string') { toast('Die Seite wird noch geladen.'); return; }
+        await settle();
+        const copy = await model.duplicatePage(cur.id);
+        await reloadPages();
+        if (copy) surface.scrollToPage(copy.id);
+        return;
+      }
       if (action === 'paper' || action === 'orient') {
         if (typeof cur.strokes !== 'string') { toast('Die Seite wird noch geladen.'); return; }
         const paper = action === 'paper' ? value : cur.paper;
@@ -247,6 +309,35 @@ export async function mountEditor(el, { noteId }, ctx) {
     } catch (e) {
       console.error(e);
       toast('Aktion fehlgeschlagen', { type: 'error' });
+    }
+  }
+
+  async function openOverview() {
+    let mod;
+    try { mod = await import('./pages.js'); } catch (e) { console.warn(e); toast('Seitenübersicht kommt bald'); return; }
+    await settle();
+    await mod.openPageOverview({
+      model, noteId, currentPageId: surface.currentPageId(),
+      getImage: (id) => model.getImage(id, { noteId }),
+      onJump: (pageId) => surface.scrollToPage(pageId),
+    });
+    await reloadPages();
+    refreshPageInfo();
+  }
+
+  async function importFiles() {
+    let mod;
+    try { mod = await import('../import/importer.js'); } catch (e) { console.warn(e); toast('Import kommt bald'); return; }
+    await settle();
+    try {
+      const added = await mod.pickAndImport({ model, noteId, afterPageId: surface.currentPageId() });
+      if (!added || !added.length) return;
+      await reloadPages();
+      surface.scrollToPage(added[0].id);
+      toast(added.length === 1 ? '1 Seite eingefügt' : `${added.length} Seiten eingefügt`, { type: 'ok' });
+    } catch (e) {
+      console.error(e);
+      toast(e.message || 'Import fehlgeschlagen', { type: 'error' });
     }
   }
 
@@ -288,7 +379,18 @@ export async function mountEditor(el, { noteId }, ctx) {
         return;
       }
       const n = await model.getNote(noteId);
-      const blob = await pdf.notePdf(n, list);
+      // Hintergrundbilder: lokal, sonst vom Server; nicht ladbar → Seite ohne Bild
+      const getAssetBytes = async (id) => {
+        const a = await model.getAsset(id);
+        if (a) return new Uint8Array(await a.blob.arrayBuffer());
+        try {
+          const b = await api.blob('asset_get', { id, note: noteId });
+          return new Uint8Array(await b.arrayBuffer());
+        } catch {
+          return null;
+        }
+      };
+      const blob = await pdf.notePdf(n, list, { getAssetBytes });
       await save.saveFile(blob, fileName(n.title));
     } catch (e) {
       console.error(e);
@@ -302,6 +404,7 @@ export async function mountEditor(el, { noteId }, ctx) {
   } catch (e) {
     console.error(e);
     model.off('change', onModelChange);
+    document.removeEventListener('keydown', onSelKey);
     toolbar.destroy();
     surface.destroy();
     el.replaceChildren(h('div', { style: { padding: '24px' } },
@@ -316,6 +419,7 @@ export async function mountEditor(el, { noteId }, ctx) {
     closed = true;
     clearTimeout(reloadTimer);
     model.off('change', onModelChange);
+    document.removeEventListener('keydown', onSelKey);
     toolbar.destroy();
     surface.destroy();
     el.replaceChildren();

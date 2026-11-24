@@ -75,7 +75,8 @@ class Client
             if ($c['max_age'] > 0) $this->cookies[$c['name']] = $c['value'];
             else unset($this->cookies[$c['name']]);
         }
-        $json = json_decode(json_encode($json), true); // like the wire format
+        // Binary responses (asset_get) carry raw bytes that json_encode cannot take; they are passed as they are.
+        if (!(is_array($json) && array_key_exists('__raw', $json))) $json = json_decode(json_encode($json), true); // like the wire format
         if (isset($json['csrf'])) $this->csrf = $json['csrf'];
         return $this->last = ['status' => $status, 'json' => $json];
     }

@@ -66,7 +66,26 @@ async function send(method, route, params, body) {
   throw new ApiError(res.status, err.code, err.message);
 }
 
+/** GET returning a Blob (binary routes such as asset_get). Errors as ApiError like the JSON routes. */
+async function getBlob(route, params) {
+  const url = new URL(URL_API);
+  url.searchParams.set('r', route);
+  if (params) for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== null) url.searchParams.set(k, String(v));
+  let res;
+  try {
+    res = await fetch(url, { credentials: 'same-origin' });
+  } catch {
+    throw new ApiError(0, 'network', 'Keine Verbindung zum Server.');
+  }
+  if (res.ok && !(res.headers.get('Content-Type') || '').includes('application/json')) return res.blob();
+  let err = { code: 'server', message: 'Datei konnte nicht geladen werden (' + res.status + ').' };
+  try { const j = await res.json(); if (j && j.error) err = j.error; } catch { /* not JSON */ }
+  if (res.status === 401 && typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('notizen:unauthorized'));
+  throw new ApiError(res.status, err.code, err.message);
+}
+
 export const api = {
+  blob: getBlob,
   get: (route, params) => request('GET', route, params, null),
   post: (route, body) => request('POST', route, null, body),
   setCsrf,

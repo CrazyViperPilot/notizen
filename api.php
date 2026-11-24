@@ -34,4 +34,13 @@ foreach ($GLOBALS['NZ_RES']['cookies'] as $c) {
         'samesite' => 'Strict',
     ]);
 }
-json_out($status, $payload);
+if (is_array($payload) && array_key_exists('__raw', $payload)) {
+    // Binary response (asset): raw bytes, replaces the JSON no-store header set above.
+    http_response_code($status);
+    header('Content-Type: ' . $payload['__type']);
+    header('Cache-Control: ' . $payload['__cache']);
+    header('Content-Length: ' . strlen($payload['__raw']));
+    echo $payload['__raw'];
+} else {
+    json_out($status, $payload);
+}

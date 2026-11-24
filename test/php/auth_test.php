@@ -5,7 +5,7 @@ function test_ping()
 {
     $r = (new Client())->get('ping');
     assert_status(200, $r);
-    assert_eq(2, $r['json']['schema']);
+    assert_eq(3, $r['json']['schema']);
 }
 
 function test_unknown_route_and_method()

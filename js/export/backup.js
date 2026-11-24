@@ -1,11 +1,16 @@
 // Backup (PRD 6.5): alle eigenen Ordner, Notizen und Seiten als eine Datei; Import legt eine Kopie in einem neuen Ordner an.
-// Format {format:'notizen-backup', version:1, exported_at, folders, notes, pages}. Mit CompressionStream gzip-komprimiert.
+// Format {format:'notizen-backup', version:2, exported_at, folders, notes, pages, assets}. Mit CompressionStream gzip-komprimiert.
 // Striche bleiben als gespeicherter String (JSON-Text wie in pages.strokes), damit der Export exakt ist.
+// Version 2 (ARCHITEKTUR 10.1): Seiten haben `bg` (Asset-id oder null); `assets` enthält die JPEG-Hintergrundbilder als
+// {id, mime, w, h, data: base64}. Version 1 (ohne Bilder) wird weiterhin gelesen.
 
 import { PAPERS } from '../config.js';
+import { api } from '../api.js';
+import { jpegInfo } from './pdf.js';
 
 const FORMAT = 'notizen-backup';
-const VERSION = 1;
+const VERSION = 2;
+const VERSIONS = [1, 2];
 const BAD = 'Die Datei ist kein gültiges Notizen-Backup.';
 
 function canGzip() {
@@ -29,9 +34,45 @@ async function gunzip(bytes) {
   }
 }
 
+/** Bytes → Base64 (in Stücken, damit große Bilder die Aufrufkette nicht sprengen). */
+function toBase64(bytes) {
+  let s = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  return btoa(s);
+}
+
+/** Base64 → Bytes. Wirft bei ungültiger Eingabe. */
+function fromBase64(s) {
+  const bin = atob(s);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+/**
+ * Hintergrundbild für den Export: lokal (model.getAsset), sonst vom Server (asset_get, eigenes Asset).
+ * Gibt {id, mime, w, h, data} zurück oder null, wenn es nicht ladbar oder kein JPEG ist. Die Maße kommen aus dem JPEG selbst.
+ */
+async function exportAsset(model, id) {
+  let blob = null;
+  try {
+    const rec = await model.getAsset(id);
+    if (rec && rec.blob) blob = rec.blob;
+  } catch { blob = null; }
+  if (!blob) {
+    try { blob = await api.blob('asset_get', { id }); } catch { return null; }
+  }
+  let bytes;
+  try { bytes = new Uint8Array(await blob.arrayBuffer()); } catch { return null; }
+  const info = jpegInfo(bytes);
+  if (!info) return null;
+  return { id, mime: 'image/jpeg', w: info.w, h: info.h, data: toBase64(bytes) };
+}
+
 /**
  * Alle sichtbaren Ordner, Notizen und Seiten. Seiten ohne geladene Striche (strokes === null) werden
- * übersprungen und gezählt. Rückgabe: {blob, skipped}.
+ * übersprungen und gezählt. Ein Hintergrundbild, das nicht geladen werden kann, wird weggelassen (die Seite
+ * bekommt bg = null) und zählt ebenfalls in `skipped` (je Bild einmal). Rückgabe: {blob, skipped}.
  */
 export async function exportAllWithInfo(model) {
   const folders = await model.listFolders();
@@ -41,13 +82,25 @@ export async function exportAllWithInfo(model) {
   const notes = [...noteMap.values()];
 
   const pages = [];
+  const assets = [];
+  const assetResult = new Map(); // Asset-id → Eintrag oder null (nicht ladbar), je Bild nur einmal geholt
   let skipped = 0;
   for (const n of notes) {
     for (const p of await model.listPages(n.id)) {
       if (typeof p.strokes !== 'string') { skipped++; continue; }
+      let bg = null;
+      if (typeof p.bg === 'string' && p.bg) {
+        if (!assetResult.has(p.bg)) {
+          const a = await exportAsset(model, p.bg);
+          assetResult.set(p.bg, a);
+          if (a) assets.push(a);
+          else skipped++;
+        }
+        if (assetResult.get(p.bg)) bg = p.bg;
+      }
       pages.push({
         id: p.id, note_id: p.note_id, pos: p.pos, paper: p.paper, orient: p.orient,
-        strokes: p.strokes, created_at: p.created_at, updated_at: p.updated_at,
+        strokes: p.strokes, bg, created_at: p.created_at, updated_at: p.updated_at,
       });
     }
   }
@@ -63,6 +116,7 @@ export async function exportAllWithInfo(model) {
       id: n.id, folder_id: n.folder_id || null, title: n.title, created_at: n.created_at, updated_at: n.updated_at,
     })),
     pages,
+    assets,
   };
   const json = JSON.stringify(doc);
   if (canGzip()) {
@@ -71,7 +125,7 @@ export async function exportAllWithInfo(model) {
   return { blob: new Blob([json], { type: 'application/json' }), skipped };
 }
 
-/** Nur der Blob (siehe exportAllWithInfo für die Anzahl übersprungener Seiten). */
+/** Nur der Blob (siehe exportAllWithInfo für die Anzahl übersprungener Seiten und Bilder). */
 export async function exportAll(model) {
   return (await exportAllWithInfo(model)).blob;
 }
@@ -91,32 +145,55 @@ async function readBackup(file) {
     throw new Error(BAD);
   }
   if (!doc || typeof doc !== 'object' || doc.format !== FORMAT) throw new Error(BAD);
-  if (doc.version !== VERSION) throw new Error('Diese Backup-Version wird nicht unterstützt.');
+  if (!VERSIONS.includes(doc.version)) throw new Error('Diese Backup-Version wird nicht unterstützt.');
   const folders = Array.isArray(doc.folders) ? doc.folders : null;
   const notes = Array.isArray(doc.notes) ? doc.notes : null;
   const pages = Array.isArray(doc.pages) ? doc.pages : null;
   if (!folders || !notes || !pages) throw new Error(BAD);
+  const assets = doc.assets === undefined || doc.assets === null ? [] : doc.assets;
+  if (!Array.isArray(assets)) throw new Error(BAD);
   for (const f of folders) if (!f || typeof f.id !== 'string') throw new Error(BAD);
   for (const n of notes) if (!n || typeof n.id !== 'string') throw new Error(BAD);
+  for (const a of assets) if (!a || typeof a.id !== 'string' || typeof a.data !== 'string') throw new Error(BAD);
   for (const p of pages) {
     if (!p || typeof p.id !== 'string' || typeof p.note_id !== 'string' || typeof p.strokes !== 'string') throw new Error(BAD);
+    if (p.bg !== undefined && p.bg !== null && typeof p.bg !== 'string') throw new Error(BAD);
     let parsed;
     try { parsed = JSON.parse(p.strokes); } catch { throw new Error(BAD); }
     if (!Array.isArray(parsed)) throw new Error(BAD);
   }
-  return { folders, notes, pages };
+  return { folders, notes, pages, assets };
+}
+
+/**
+ * Legt die Hintergrundbilder lokal an (model.putAsset, Hash = id). Ungültige Einträge (kein JPEG, schlechtes Base64)
+ * werden übersprungen. Rückgabe: Map Datei-id → id im Client (gleicher Hash bei unveränderter Datei).
+ */
+async function importAssets(model, assets) {
+  const ids = new Map();
+  for (const a of assets) {
+    if (ids.has(a.id)) continue;
+    let bytes;
+    try { bytes = fromBase64(a.data); } catch { continue; }
+    const info = jpegInfo(bytes);
+    if (!info) continue;
+    ids.set(a.id, await model.putAsset(new Blob([bytes], { type: 'image/jpeg' }), info.w, info.h));
+  }
+  return ids;
 }
 
 const today = () => new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
 
 /**
  * Legt die Datei als Kopie in einen neuen Ordner „Import <Datum>“ (neue IDs). Zählt die importierten
- * Ordner (ohne den Import-Ordner selbst), Notizen und Seiten.
+ * Ordner (ohne den Import-Ordner selbst), Notizen, Seiten und Hintergrundbilder.
  */
 export async function importBackup(model, file) {
-  const { folders, notes, pages } = await readBackup(file);
-  const counts = { folders: 0, notes: 0, pages: 0 };
+  const { folders, notes, pages, assets } = await readBackup(file);
+  const counts = { folders: 0, notes: 0, pages: 0, assets: 0 };
   const root = await model.createFolder({ name: `Import ${today()}`, parentId: null });
+  const assetIds = await importAssets(model, assets);
+  counts.assets = assetIds.size;
 
   // Ordner von oben nach unten anlegen. Ordner in einem Zyklus oder mit unbekanntem Elternteil hängen unter dem Import-Ordner.
   const byId = new Map(folders.map((f) => [f.id, f]));
@@ -174,6 +251,8 @@ export async function importBackup(model, file) {
         last = page;
       }
       await model.saveStrokes(page.id, sp.strokes);
+      // Hintergrundbild erst nach den Strichen setzen (setPageBackground braucht die Seite mit Strichen)
+      if (typeof sp.bg === 'string' && assetIds.has(sp.bg)) await model.setPageBackground(page.id, assetIds.get(sp.bg));
       counts.pages++;
     }
   }

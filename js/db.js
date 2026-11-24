@@ -1,6 +1,6 @@
 // IndexedDB layer, one database per user: notizen-u<userId>. See docs/ARCHITEKTUR.md 3.4.
 
-const VERSION = 1;
+const VERSION = 2; // 2: store 'assets' (page background images)
 const name = (userId) => 'notizen-u' + userId;
 
 function req(r) {
@@ -13,21 +13,13 @@ function req(r) {
 export function openDb(userId) {
   return new Promise((resolve, reject) => {
     const r = indexedDB.open(name(userId), VERSION);
-    r.onupgradeneeded = () => {
+    r.onupgradeneeded = (ev) => {
       const d = r.result;
-      const folders = d.createObjectStore('folders', { keyPath: 'id' });
-      folders.createIndex('parent_id', 'parent_id');
-      folders.createIndex('dirty', 'dirty');
-      const notes = d.createObjectStore('notes', { keyPath: 'id' });
-      notes.createIndex('folder_id', 'folder_id');
-      notes.createIndex('dirty', 'dirty');
-      const pages = d.createObjectStore('pages', { keyPath: 'id' });
-      pages.createIndex('note_id', 'note_id');
-      pages.createIndex('dirty', 'dirty');
-      pages.createIndex('need', 'need');
-      d.createObjectStore('meta', { keyPath: 'k' });
-      d.createObjectStore('thumbs', { keyPath: 'note_id' });
-      d.createObjectStore('shared', { keyPath: 'key' });
+      if (ev.oldVersion < 1) createV1(d);
+      if (ev.oldVersion < 2) {
+        const assets = d.createObjectStore('assets', { keyPath: 'id' });
+        assets.createIndex('uploaded', 'uploaded');
+      }
     };
     r.onsuccess = () => {
       const d = r.result;
@@ -37,6 +29,22 @@ export function openDb(userId) {
     r.onerror = () => reject(r.error);
     r.onblocked = () => reject(new Error('Datenbank ist in einem anderen Tab geöffnet.'));
   });
+}
+
+function createV1(d) {
+  const folders = d.createObjectStore('folders', { keyPath: 'id' });
+  folders.createIndex('parent_id', 'parent_id');
+  folders.createIndex('dirty', 'dirty');
+  const notes = d.createObjectStore('notes', { keyPath: 'id' });
+  notes.createIndex('folder_id', 'folder_id');
+  notes.createIndex('dirty', 'dirty');
+  const pages = d.createObjectStore('pages', { keyPath: 'id' });
+  pages.createIndex('note_id', 'note_id');
+  pages.createIndex('dirty', 'dirty');
+  pages.createIndex('need', 'need');
+  d.createObjectStore('meta', { keyPath: 'k' });
+  d.createObjectStore('thumbs', { keyPath: 'note_id' });
+  d.createObjectStore('shared', { keyPath: 'key' });
 }
 
 export function deleteDb(userId) {

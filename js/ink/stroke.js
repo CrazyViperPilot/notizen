@@ -4,6 +4,7 @@
 // pressure). That is robust at sharp turns (no gaps or notches) and fills with one nonzero fill per stroke.
 
 import { PEN_WIDTHS, HL_WIDTH } from '../config.js';
+import { strokeId } from './codec.js';
 
 const MIN_DIST = 3;        // drop input points closer than 0.3 mm to the previous one
 const SMOOTH = 0.55;       // low-pass factor for position (1 = no smoothing)
@@ -169,4 +170,79 @@ export function hitTestSegment(stroke, ax, ay, bx, by, r) {
     if (hitTest(stroke, ax + (bx - ax) * t, ay + (by - ay) * t, r)) return true;
   }
   return false;
+}
+
+/**
+ * Teil-Radierer (ARCHITEKTUR 10.3). Eraser = Kapsel um (ax,ay)-(bx,by) mit Radius r.
+ * Returns null if no point of the stroke is touched. Otherwise the remaining runs of untouched points as new strokes
+ * (new ids, same type/color/width; runs with fewer than 2 points are dropped). Empty array if everything was erased.
+ * The stroke is densified first (interpolated points, spacing <= r/2, but at least 1 unit) so that thinly sampled
+ * strokes split cleanly. Points are only tested against r, not against the pen width.
+ */
+export function eraseSplit(stroke, ax, ay, bx, by, r) {
+  const pts = stroke.pts;
+  if (!pts || pts.length < 3) return null;
+  const R = r > 0 ? r : 0;
+
+  // 1. Quick reject: stroke bbox (includes its width) against the capsule bbox.
+  const bb = bbox(stroke);
+  if (Math.min(ax, bx) - R > bb[2] || Math.max(ax, bx) + R < bb[0] ||
+      Math.min(ay, by) - R > bb[3] || Math.max(ay, by) + R < bb[1]) return null;
+
+  // 2. Densify: each segment is split into k = ceil(len / step) pieces, endpoints are kept exactly.
+  const step = Math.max(R / 2, 1);
+  const n = pts.length / 3;
+  let total = 1;
+  for (let i = 1; i < n; i++) {
+    const len = Math.hypot(pts[i * 3] - pts[i * 3 - 3], pts[i * 3 + 1] - pts[i * 3 - 2]);
+    total += Math.max(1, Math.ceil(len / step));
+  }
+  const dense = new Int32Array(total * 3);
+  dense[0] = pts[0]; dense[1] = pts[1]; dense[2] = pts[2];
+  let m = 1;
+  for (let i = 1; i < n; i++) {
+    const x0 = pts[i * 3 - 3], y0 = pts[i * 3 - 2], p0 = pts[i * 3 - 1];
+    const dx = pts[i * 3] - x0, dy = pts[i * 3 + 1] - y0, dp = pts[i * 3 + 2] - p0;
+    const k = Math.max(1, Math.ceil(Math.hypot(dx, dy) / step));
+    for (let s = 1; s <= k; s++) {
+      const t = s / k;
+      dense[m * 3] = Math.round(x0 + dx * t);
+      dense[m * 3 + 1] = Math.round(y0 + dy * t);
+      dense[m * 3 + 2] = Math.round(p0 + dp * t);
+      m++;
+    }
+  }
+
+  // 3. Mark touched points (distance to segment AB <= r).
+  const hit = new Uint8Array(total);
+  const r2 = R * R;
+  let any = false;
+  for (let i = 0; i < total; i++) {
+    if (segDist2(dense[i * 3], dense[i * 3 + 1], ax, ay, bx, by) <= r2) { hit[i] = 1; any = true; }
+  }
+  if (!any) return null;
+
+  // 4. Collect runs of untouched points as new strokes.
+  const out = [];
+  const used = [stroke.id];
+  let i = 0;
+  while (i < total) {
+    if (hit[i]) { i++; continue; }
+    let j = i;
+    while (j < total && !hit[j]) j++;
+    if (j - i >= 2) {
+      let id = strokeId();
+      while (used.indexOf(id) !== -1) id = strokeId();
+      used.push(id);
+      out.push({
+        id,
+        type: stroke.type,
+        color: stroke.color,
+        width: stroke.width,
+        pts: dense.slice(i * 3, j * 3),
+      });
+    }
+    i = j;
+  }
+  return out;
 }

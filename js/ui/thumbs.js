@@ -8,8 +8,8 @@ import { drawPage, setPageTransform } from '../ink/render.js';
 const THUMB_W = 240;   // Pixel-Breite des Vorschaubilds
 let canvas = null;     // ein wiederverwendetes Offscreen-Canvas (Zeichnen und toBlob laufen synchron nacheinander)
 
-/** Rendert eine Seite als PNG-Blob. Ohne Striche (strokes === null) nur das Papier. */
-function renderPage(page) {
+/** Rendert eine Seite als PNG-Blob. Ohne Striche (strokes === null) nur das Papier. img: Hintergrundbild oder null. */
+function renderPage(page, img) {
   const dims = PAGE[page.orient] || PAGE.p;
   const w = THUMB_W;
   const hPx = Math.round((THUMB_W * dims.h) / dims.w);
@@ -21,7 +21,7 @@ function renderPage(page) {
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   setPageTransform(ctx, scale);
   const strokes = typeof page.strokes === 'string' ? decodeStrokes(page.strokes) : [];
-  drawPage(ctx, page, strokes, scale);
+  drawPage(ctx, page, strokes, scale, null, img);
   // toBlob übernimmt die Bitmap synchron; danach darf das Canvas wiederverwendet werden.
   return new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
 }
@@ -32,13 +32,16 @@ export async function noteThumb(model, note) {
     const pages = await model.listPages(note.id);
     const page = pages[0];
     if (!page) return null;
-    const key = page.id + ':' + page.rev + ':' + page.lrev + ':' + page.paper;
+    const key = page.id + ':' + page.rev + ':' + page.lrev + ':' + page.paper + ':' + (page.bg || '');
     const cached = await model.thumbs.get(note.id);
     if (cached && cached.page_rev === key && cached.blob) return URL.createObjectURL(cached.blob);
-    const blob = await renderPage(page);
+    // Hintergrundbild (ARCHITEKTUR 10.1). Lokal oder per Server; nicht ladbar → Vorschau ohne Bild, dann nicht cachen.
+    const img = page.bg ? await model.getImage(page.bg, { noteId: note.id }) : null;
+    const blob = await renderPage(page, img);
     if (!blob) return null;
     // Seiten ohne geladene Striche zeigen nur das Papier: nicht cachen, sonst bliebe das Bild leer.
-    if (page.strokes !== null) await model.thumbs.put(note.id, key, blob);
+    // Dasselbe gilt für ein Hintergrundbild, das (noch) nicht geladen werden konnte.
+    if (page.strokes !== null && (!page.bg || img)) await model.thumbs.put(note.id, key, blob);
     return URL.createObjectURL(blob);
   } catch (e) {
     console.error(e);

@@ -37,6 +37,7 @@ export async function init(u) {
 }
 
 export async function close() {
+  imageCache.clear();
   if (sync) sync.stop();
   if (db) db.close();
   db = null; sync = null; user = null;
@@ -197,7 +198,7 @@ export async function restoreNote(id) {
 // ───────────────────────── pages ─────────────────────────
 
 function newPage(noteId, pos, paper, orient, now = Date.now()) {
-  return { id: uuid(), note_id: noteId, pos, paper, orient, strokes: '[]', bytes: 2, conflict: 0, need: 0, ...base(now) };
+  return { id: uuid(), note_id: noteId, pos, paper, orient, bg: null, strokes: '[]', bytes: 2, conflict: 0, need: 0, ...base(now) };
 }
 
 /** Visible pages of a note, by pos. Pages whose strokes are not downloaded yet have strokes === null. */
@@ -210,6 +211,132 @@ export async function listPages(noteId) {
 export async function getPage(id) {
   const p = await need().get('pages', id);
   return p && !p.purged ? p : null;
+}
+
+/** pos for a new page right after `afterPageId` (null/unknown = at the end); renumbers the note if needed. */
+async function posAfter(noteId, afterPageId) {
+  let pages = await listPages(noteId);
+  const i = afterPageId ? pages.findIndex((p) => p.id === afterPageId) : -1;
+  if (i < 0 || i === pages.length - 1) return (pages.length ? pages[pages.length - 1].pos : 0) + 1;
+  if (pages[i + 1].pos - pages[i].pos < 1e-9) {
+    for (let k = 0; k < pages.length; k++) if (pages[k].pos !== k + 1) await write('page', { ...pages[k], pos: k + 1 });
+    pages = await listPages(noteId);
+  }
+  return (pages[i].pos + pages[i + 1].pos) / 2;
+}
+
+/** Moves a page before `beforePageId` (null = to the end). */
+export async function movePage(pageId, beforePageId) {
+  const p = await getPage(pageId);
+  if (!p || pageId === beforePageId) return;
+  const others = (await listPages(p.note_id)).filter((x) => x.id !== pageId);
+  const j = beforePageId ? others.findIndex((x) => x.id === beforePageId) : -1;
+  let pos;
+  if (j < 0) pos = (others.length ? others[others.length - 1].pos : 0) + 1;
+  else if (j === 0) pos = others[0].pos - 1;
+  else pos = (others[j - 1].pos + others[j].pos) / 2;
+  if (j > 0 && others[j].pos - others[j - 1].pos < 1e-9) {
+    // Renumber all pages with the moved one in place.
+    const order = [...others.slice(0, j), p, ...others.slice(j)];
+    for (let k = 0; k < order.length; k++) if (order[k].pos !== k + 1) await write('page', { ...(await getPage(order[k].id)), pos: k + 1 });
+  } else {
+    await write('page', { ...p, pos });
+  }
+  await touchNote(p.note_id, true);
+}
+
+/** Copy of a page (paper, background, strokes) right after it. */
+export async function duplicatePage(pageId) {
+  const p = await getPage(pageId);
+  if (!p || typeof p.strokes !== 'string') return null;
+  const pos = await posAfter(p.note_id, pageId);
+  const copy = { ...newPage(p.note_id, pos, p.paper, p.orient), bg: p.bg || null, strokes: p.strokes, bytes: p.strokes.length };
+  const r = await write('page', copy, { touch: false });
+  await touchNote(p.note_id, true);
+  return r;
+}
+
+// ───────────────────────── page background images (assets) ─────────────────────────
+
+async function sha256hex(blob) {
+  const buf = await crypto.subtle.digest('SHA-256', await blob.arrayBuffer());
+  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+/** Stores a JPEG as local asset (to be uploaded) and returns its id. Same bytes → same id. */
+export async function putAsset(blob, w, h) {
+  const id = await sha256hex(blob);
+  if (!(await need().get('assets', id))) {
+    await need().put('assets', { id, blob, mime: 'image/jpeg', w, h, uploaded: 0, at: Date.now() });
+  }
+  return id;
+}
+
+/** Sets or removes a page's background image (asset id from putAsset, or null). */
+export async function setPageBackground(pageId, assetId) {
+  const p = await getPage(pageId);
+  if (p && typeof p.strokes === 'string') return write('page', { ...p, bg: assetId || null });
+}
+
+/**
+ * New pages with a background image each, after `afterPageId` (in order). images: [{blob (JPEG), w, h}].
+ * Paper 'blank', orientation from the image. Returns the new pages.
+ */
+export async function addImagePages(noteId, afterPageId, images) {
+  const out = [];
+  let after = afterPageId;
+  for (const im of images) {
+    const id = await sha256hex(im.blob);
+    if (!(await need().get('assets', id))) {
+      await need().put('assets', { id, blob: im.blob, mime: 'image/jpeg', w: im.w, h: im.h, uploaded: 0, at: Date.now() });
+    }
+    const pos = await posAfter(noteId, after);
+    const page = await write('page', { ...newPage(noteId, pos, 'blank', im.w > im.h ? 'l' : 'p'), bg: id }, { touch: false });
+    out.push(page);
+    after = page.id;
+  }
+  if (out.length) await touchNote(noteId, true);
+  return out;
+}
+
+const imageCache = new Map(); // assetId → Promise<image|null>
+
+function decodeImage(blob) {
+  if (typeof createImageBitmap === 'function') return createImageBitmap(blob);
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(blob);
+    const img = new Image();
+    img.onload = () => { URL.revokeObjectURL(url); resolve(img); };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Bild nicht lesbar')); };
+    img.src = url;
+  });
+}
+
+/** Local asset record or null. */
+export async function getAsset(id) {
+  return db ? (await need().get('assets', id)) || null : null;
+}
+
+/**
+ * Decoded background image (cached). Missing locally → downloaded (own image, or via `noteId` for shared/admin views)
+ * and stored. Resolves null when it cannot be loaded (offline, no access).
+ */
+export function getImage(id, { noteId = null, store = true } = {}) {
+  if (!id) return Promise.resolve(null);
+  if (imageCache.has(id)) return imageCache.get(id);
+  const p = (async () => {
+    let rec = db ? await need().get('assets', id) : null;
+    if (!rec) {
+      const blob = await api.blob('asset_get', { id, note: noteId || undefined });
+      if (store && db) {
+        rec = { id, blob, mime: blob.type || 'image/jpeg', w: 0, h: 0, uploaded: 1, at: Date.now() };
+        await need().put('assets', rec);
+      } else rec = { blob };
+    }
+    return decodeImage(rec.blob);
+  })().catch((e) => { imageCache.delete(id); console.warn('Bild', id, e); return null; });
+  imageCache.set(id, p);
+  return p;
 }
 
 export async function addPage(noteId, afterPageId, { paper, orient }) {
