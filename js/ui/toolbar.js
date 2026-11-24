@@ -2,7 +2,7 @@
 // localStorage 'notizen:prefs' (key `tool`). Keyboard shortcuts only work while no input has focus.
 // Everything user-provided goes through textContent / attributes (no innerHTML).
 
-import { PEN_COLORS, PEN_COLOR_NAMES, PEN_WIDTHS, HL_COLORS, HL_COLOR_NAMES, PAPERS, PAPER_NAMES } from '../config.js';
+import { PEN_COLORS, PEN_COLOR_NAMES, PEN_WIDTHS, HL_COLORS, HL_COLOR_NAMES, PAPERS, PAPER_NAMES, isHexColor, DEFAULT_CUSTOM_COLOR } from '../config.js';
 import { h, menu, promptText } from './dom.js';
 
 const PREFS_KEY = 'notizen:prefs';
@@ -48,6 +48,8 @@ function writePrefs(p) {
 }
 
 const idx = (v, n) => (Number.isInteger(v) && v >= 0 && v < n ? v : 0);
+/** Pen color: palette index or custom "#rrggbb". */
+const penColorOf = (v) => (isHexColor(v) ? v.toLowerCase() : idx(v, PEN_COLORS.length));
 
 /**
  * createToolbar({onTool, onUndo, onRedo, onBack, onTitle, onPageMenu, onAddPage})
@@ -62,8 +64,9 @@ export function createToolbar({ onTool, onUndo, onRedo, onBack, onTitle, onPageM
   let kind = KINDS.includes(saved.kind) ? saved.kind : 'pen';
   const mem = {
     pen: {
-      color: idx(saved.pen && saved.pen.color, PEN_COLORS.length),
+      color: penColorOf(saved.pen && saved.pen.color),
       width: idx(saved.pen && saved.pen.width, PEN_WIDTHS.length),
+      custom: saved.pen && isHexColor(saved.pen.custom) ? saved.pen.custom.toLowerCase() : DEFAULT_CUSTOM_COLOR,
     },
     highlighter: { color: idx(saved.highlighter && saved.highlighter.color, HL_COLORS.length) },
   };
@@ -158,6 +161,12 @@ export function createToolbar({ onTool, onUndo, onRedo, onBack, onTitle, onPageM
       }, h('span', { className: 'tb-dot', style: { background: c } })));
     });
     if (isPen) {
+      // After the palette: any color from the full RGB range (system color picker).
+      const on = isHexColor(cur);
+      styleEl.append(h('button', {
+        type: 'button', className: 'tb-btn tb-sw tb-custom' + (on ? ' on' : ''), title: 'Eigene Farbe wählen',
+        'aria-label': 'Eigene Farbe wählen', 'aria-pressed': on ? 'true' : 'false', onclick: openCustomColor,
+      }, h('span', { className: 'tb-dot', style: { background: mem.pen.custom } })));
       PEN_WIDTHS.forEach((_, i) => {
         const on = i === mem.pen.width;
         const d = WIDTH_DOTS[i];
@@ -167,6 +176,31 @@ export function createToolbar({ onTool, onUndo, onRedo, onBack, onTitle, onPageM
           onclick: () => setWidth(i),
         }, h('span', { className: 'tb-dot', style: { width: d + 'px', height: d + 'px' } })));
       });
+    }
+  }
+
+  // Native color input: kept in the DOM (invisible) because iOS only opens pickers of attached inputs.
+  const colorInput = h('input', {
+    type: 'color', className: 'tb-color-input', tabIndex: -1, 'aria-hidden': 'true',
+    oninput: () => applyCustom(colorInput.value),
+    onchange: () => applyCustom(colorInput.value),
+  });
+  el.append(colorInput);
+
+  function applyCustom(v) {
+    if (!isHexColor(v)) return;
+    mem.pen.custom = v.toLowerCase();
+    if (kind === 'pen') setColor(mem.pen.custom);
+  }
+
+  function openCustomColor() {
+    setColor(mem.pen.custom);
+    colorInput.value = mem.pen.custom;
+    try {
+      if (typeof colorInput.showPicker === 'function') colorInput.showPicker();
+      else colorInput.click();
+    } catch {
+      colorInput.click();
     }
   }
 
@@ -239,7 +273,7 @@ export function createToolbar({ onTool, onUndo, onRedo, onBack, onTitle, onPageM
       if (!t || !KINDS.includes(t.kind)) return;
       kind = t.kind;
       if (kind === 'pen') {
-        mem.pen.color = idx(t.color, PEN_COLORS.length);
+        mem.pen.color = penColorOf(t.color);
         mem.pen.width = idx(t.width, PEN_WIDTHS.length);
       } else if (kind === 'highlighter') {
         mem.highlighter.color = idx(t.color, HL_COLORS.length);

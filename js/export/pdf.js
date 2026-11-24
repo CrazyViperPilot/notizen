@@ -4,7 +4,7 @@
 // Stifte: die Vierecke und Kreise aus penShapes werden mit nonzero gefüllt. Die Kreise laufen hier im selben
 // Drehsinn wie die Vierecke (gegen den Uhrzeigersinn im PDF), sonst heben sie sich an Gelenken gegenseitig auf.
 
-import { PAGE, PEN_COLORS, HL_COLORS, HL_WIDTH, HL_ALPHA, PAPER_STYLE } from '../config.js';
+import { PAGE, HL_WIDTH, HL_ALPHA, PAPER_STYLE, penColor, hlColor } from '../config.js';
 import { paperGeometry } from '../ink/paper.js';
 import { penShapes } from '../ink/stroke.js';
 import { decodeStrokes } from '../ink/codec.js';
@@ -75,7 +75,7 @@ function contentOf(paper, orient, strokes) {
       const p = s.pts;
       const n = p.length / 3;
       if (!n) continue;
-      ops.push(rgb(HL_COLORS[s.color] || HL_COLORS[0], 'RG'), `${X(p[0])} ${Y(p[1])} m`);
+      ops.push(rgb(hlColor(s.color), 'RG'), `${X(p[0])} ${Y(p[1])} m`);
       // Einzelner Punkt: winziges Segment, damit der runde Strich als Punkt erscheint
       if (n === 1) ops.push(`${num(p[0] * K + 0.01)} ${Y(p[1])} l`);
       for (let i = 3; i < p.length; i += 3) ops.push(`${X(p[i])} ${Y(p[i + 1])} l`);
@@ -90,7 +90,7 @@ function contentOf(paper, orient, strokes) {
     const { circles, quads } = penShapes(s);
     if (!quads.length && !circles.length) continue;
     if (!penGs) { ops.push('/GS0 gs'); penGs = true; }
-    ops.push(rgb(PEN_COLORS[s.color] || PEN_COLORS[0], 'rg'));
+    ops.push(rgb(penColor(s.color), 'rg'));
     for (let i = 0; i < quads.length; i += 8) {
       ops.push(`${X(quads[i])} ${Y(quads[i + 1])} m ${X(quads[i + 2])} ${Y(quads[i + 3])} l ${X(quads[i + 4])} ${Y(quads[i + 5])} l ${X(quads[i + 6])} ${Y(quads[i + 7])} l h`);
     }

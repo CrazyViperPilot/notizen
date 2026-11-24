@@ -1,6 +1,8 @@
 // Stroke (de)serialization. Wire/storage format (docs/ARCHITEKTUR.md 3.3):
-//   [{"i":"k3x9a1b2","t":"p","c":0,"w":1,"p":[x0,y0,p0, dx1,dy1,dp1, …]}]
+//   [{"i":"k3x9a1b2","t":"p","c":0,"w":1,"p":[x0,y0,p0, dx1,dy1,dp1, …]}]   c = Farbindex oder "#rrggbb"
 // In memory: {id, type: 'p'|'h', color, width, pts: Int32Array (x,y,p absolute)}.
+
+import { isHexColor } from '../config.js';
 
 const ID_CHARS = 'abcdefghijklmnopqrstuvwxyz0123456789';
 
@@ -47,7 +49,7 @@ export function decodeStrokes(str) {
     out.push({
       id: typeof o.i === 'string' && o.i ? o.i : strokeId(),
       type,
-      color: Number.isInteger(o.c) && o.c >= 0 ? o.c : 0,
+      color: isHexColor(o.c) ? o.c.toLowerCase() : Number.isInteger(o.c) && o.c >= 0 ? o.c : 0,
       width: type === 'h' ? 0 : (Number.isInteger(o.w) && o.w >= 0 && o.w <= 2 ? o.w : 1),
       pts,
     });

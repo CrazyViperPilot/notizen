@@ -57,3 +57,13 @@
   padding: 6px 14px; border-radius: 16px; background: rgba(29, 35, 43, .8); color: #fff; font-size: 14px; white-space: nowrap;
 }
 .ed-hint[hidden] { display: none; }
+
+/* Eigene Farbe: Farbpunkt mit Regenbogen-Ring */
+.tb-custom { position: relative; }
+.tb-custom::before {
+  content: ""; position: absolute; inset: 7px; border-radius: 50%;
+  background: conic-gradient(#ff3b30, #ffcc00, #34c759, #00c7be, #007aff, #af52de, #ff2d55, #ff3b30);
+}
+.tb-custom .tb-dot, .tb-custom.on .tb-dot { position: relative; z-index: 1; width: 20px; height: 20px; box-shadow: 0 0 0 2px #fff; }
+.tb-custom.on::before { inset: 5px; }
+.tb-color-input { position: fixed; left: 50%; top: 60px; width: 1px; height: 1px; opacity: 0; border: 0; padding: 0; pointer-events: none; }

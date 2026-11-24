@@ -1,7 +1,7 @@
 // Canvas drawing. All functions expect ctx's transform to map page units (0.1 mm) to device pixels;
 // `scale` = device pixels per page unit (used for minimum line widths).
 
-import { PAGE, PEN_COLORS, HL_COLORS, HL_WIDTH, HL_ALPHA, PAPER_STYLE } from '../config.js';
+import { PAGE, HL_WIDTH, HL_ALPHA, PAPER_STYLE, penColor, hlColor } from '../config.js';
 import { paperGeometry } from './paper.js';
 import { penShapes, bbox } from './stroke.js';
 
@@ -69,7 +69,7 @@ export function tracePen(ctx, stroke, from = 0) {
 export function drawPen(ctx, stroke, from = 0) {
   ctx.beginPath();
   tracePen(ctx, stroke, from);
-  ctx.fillStyle = PEN_COLORS[stroke.color] || PEN_COLORS[0];
+  ctx.fillStyle = penColor(stroke.color);
   ctx.fill('nonzero');
 }
 
@@ -78,7 +78,7 @@ export function drawHighlighter(ctx, stroke) {
   ctx.save();
   ctx.globalAlpha = HL_ALPHA;
   ctx.globalCompositeOperation = 'multiply';
-  ctx.strokeStyle = HL_COLORS[stroke.color] || HL_COLORS[0];
+  ctx.strokeStyle = hlColor(stroke.color);
   ctx.lineWidth = HL_WIDTH;
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';

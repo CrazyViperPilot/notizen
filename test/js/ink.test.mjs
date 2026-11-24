@@ -115,3 +115,11 @@ test('paper geometry', () => {
   const blank = paperGeometry('blank', 'p');
   assert.equal(blank.lines.length + blank.dots.length, 0);
 });
+
+test('codec: custom hex colors survive, invalid ones fall back', () => {
+  const s = [{ id: 'cust0001', type: 'p', color: '#A1B2C3', width: 1, pts: Int32Array.from([1, 2, 3]) }];
+  const back = decodeStrokes(encodeStrokes(s));
+  assert.equal(back[0].color, '#a1b2c3');
+  assert.equal(decodeStrokes('[{"c":"red","p":[1,2,3]}]')[0].color, 0);
+  assert.equal(decodeStrokes('[{"c":"#12345","p":[1,2,3]}]')[0].color, 0);
+});

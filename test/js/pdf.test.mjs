@@ -174,3 +174,10 @@ test('PDF lässt sich mit pdftotext öffnen', { skip: !HAS_PDFTOTEXT && 'pdftote
     assert.equal(r.status, 0, r.stderr);
   });
 });
+
+test('pdf: custom pen color is written as rgb', async () => {
+  const { buildPdf } = await import('../../js/export/pdf.js');
+  const strokes = JSON.stringify([{ i: 'x', t: 'p', c: '#ff8000', w: 1, p: [100, 100, 128, 50, 0, 0] }]);
+  const pdf = new TextDecoder('latin1').decode(buildPdf([{ paper: 'blank', orient: 'p', strokes }], { title: 'Farbe' }));
+  assert.ok(pdf.includes('1.000 0.502 0.000 rg'), 'Farbe #ff8000 im Content-Stream');
+});

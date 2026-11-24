@@ -10,7 +10,7 @@
 //   - one "detail" canvas over the whole container, sharp at the current zoom (only when zoom > 1, after gestures),
 //   - one "live" canvas on top for the stroke in progress and the eraser cursor.
 
-import { PAGE, PAGE_GAP, PAGE_PAD, ZOOM_MIN, ZOOM_MAX, ERASER_RADIUS, UNDO_LIMIT, SAVE_DELAY } from '../config.js';
+import { isHexColor, PAGE, PAGE_GAP, PAGE_PAD, ZOOM_MIN, ZOOM_MAX, ERASER_RADIUS, UNDO_LIMIT, SAVE_DELAY } from '../config.js';
 import { decodeStrokes, encodeStrokes, strokeId } from './codec.js';
 import { Smoother, normPressure, hitTestSegment, bbox } from './stroke.js';
 import { drawPage, drawPen, drawHighlighter, setPageTransform } from './render.js';
@@ -664,7 +664,7 @@ class Surface extends EventTarget {
       erased: [], lastU: null,
       stroke: kind === 'eraser' ? null : {
         id: strokeId(), type: kind === 'highlighter' ? 'h' : 'p',
-        color: this.tool.color | 0, width: kind === 'highlighter' ? 0 : this.tool.width | 0, pts: null,
+        color: isHexColor(this.tool.color) ? this.tool.color.toLowerCase() : this.tool.color | 0, width: kind === 'highlighter' ? 0 : this.tool.width | 0, pts: null,
       },
     };
     this._addSample(e);

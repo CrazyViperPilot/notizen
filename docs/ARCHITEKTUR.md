@@ -119,7 +119,7 @@ JSON-Array von Strichen. Der Server prüft nur: gültiges JSON-Array, höchstens
 [{"i":"k3x9a1","t":"p","c":0,"w":1,"p":[x0,y0,p0, dx1,dy1,dp1, dx2,dy2,dp2, …]}]
 ```
 - `i`: Strich-ID (8 zufällige Zeichen, eindeutig pro Seite), `t`: `"p"` Stift | `"h"` Textmarker,
-  `c`: Farbindex (in `PEN_COLORS` bzw. `HL_COLORS`), `w`: Stärkenindex 0–2 (bei `"h"` immer 0).
+  `c`: Farbindex (in `PEN_COLORS` bzw. `HL_COLORS`) **oder** eigene Farbe als `"#rrggbb"` (Helfer `penColor()`/`hlColor()` in `config.js`), `w`: Stärkenindex 0–2 (bei `"h"` immer 0).
 - `p`: Punkte, **delta-kodiert** als Ganzzahlen. Erster Punkt absolut, danach Differenzen. `x`,`y` in 0,1 mm,
   Druck `p` 0–255 (Maus/Finger: 128). Punkte sind bereits geglättet und entdoppelt gespeichert.
 - `codec.js` exportiert `encodeStrokes(strokes) → string` und `decodeStrokes(string) → Stroke[]`, wobei
