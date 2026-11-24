@@ -4,6 +4,7 @@
 
 import { PEN_COLORS, PEN_COLOR_NAMES, PEN_WIDTHS, HL_COLORS, HL_COLOR_NAMES, PAPERS, PAPER_NAMES, isHexColor, DEFAULT_CUSTOM_COLOR, DEFAULT_CUSTOM_HL_COLOR } from '../config.js';
 import { h, menu, promptText } from './dom.js';
+import { pickColor } from './colorpicker.js';
 import { fullscreenSupported, isFullscreen, toggleFullscreen, onFullscreenChange } from './fullscreen.js';
 
 const PREFS_KEY = 'notizen:prefs';
@@ -222,31 +223,15 @@ export function createToolbar({ onTool, onUndo, onRedo, onBack, onTitle, onPageM
     }
   }
 
-  // Native color input: kept in the DOM (invisible) because iOS only opens pickers of attached inputs.
-  const colorInput = h('input', {
-    type: 'color', className: 'tb-color-input', tabIndex: -1, 'aria-hidden': 'true',
-    oninput: () => applyCustom(colorInput.value),
-    onchange: () => applyCustom(colorInput.value),
-  });
-  el.append(colorInput);
-
-  function applyCustom(v) {
-    if (!isHexColor(v)) return;
-    if (kind !== 'pen' && kind !== 'highlighter') return;
-    mem[kind].custom = v.toLowerCase();
-    setColor(mem[kind].custom);
-  }
-
-  function openCustomColor() {
-    if (kind !== 'pen' && kind !== 'highlighter') return;
-    setColor(mem[kind].custom);
-    colorInput.value = mem[kind].custom;
-    try {
-      if (typeof colorInput.showPicker === 'function') colorInput.showPicker();
-      else colorInput.click();
-    } catch {
-      colorInput.click();
-    }
+  // Eigene Farbe: eigener Farbwähler (js/ui/colorpicker.js) statt <input type="color">, dessen Systemdialog
+  // sich unter iOS nicht zuverlässig öffnen lässt. Abbrechen lässt die bisherige Farbe unverändert.
+  async function openCustomColor() {
+    const k = kind;
+    if (k !== 'pen' && k !== 'highlighter') return;
+    const v = await pickColor({ title: k === 'pen' ? 'Eigene Stiftfarbe' : 'Eigene Markerfarbe', value: mem[k].custom });
+    if (!v || kind !== k) return;
+    mem[k].custom = v;
+    setColor(v);
   }
 
   async function rename() {

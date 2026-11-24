@@ -48,8 +48,9 @@ export function toast(message, { type = '', ms = 2600 } = {}) {
  * Modal dialog. body: Node | (closeFn) => Node. actions: [{label, value, primary, danger}].
  * Resolves with the chosen action value, or null (Escape/backdrop/Abbrechen).
  * `onAction(value)` may return false (or a Promise of false) to keep the dialog open (e.g. validation).
+ * `autofocus: false` keeps the focus off inputs (no on-screen keyboard popping up on tablets).
  */
-export function dialog({ title, body, actions = [{ label: 'OK', value: true, primary: true }], onAction = null, dismissible = true }) {
+export function dialog({ title, body, actions = [{ label: 'OK', value: true, primary: true }], onAction = null, dismissible = true, autofocus = true }) {
   return new Promise((resolve) => {
     const prevFocus = document.activeElement;
     let done = false;
@@ -85,7 +86,7 @@ export function dialog({ title, body, actions = [{ label: 'OK', value: true, pri
     const backdrop = h('div', { className: 'nz-backdrop', onclick: (e) => { if (e.target === backdrop && dismissible) close(null); } }, box);
     document.body.append(backdrop);
     document.addEventListener('keydown', onKey, true);
-    const first = box.querySelector('input, select, textarea') || footer.querySelector('.primary') || footer.lastChild;
+    const first = (autofocus && box.querySelector('input, select, textarea')) || footer.querySelector('.primary') || footer.lastChild;
     if (first) setTimeout(() => first.focus(), 30);
   });
 }

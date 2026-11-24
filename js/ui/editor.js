@@ -10,7 +10,8 @@ import { createSurface } from '../ink/surface.js';
 import { decodeStrokes, encodeStrokes } from '../ink/codec.js';
 import { createToolbar } from './toolbar.js';
 import { h, toast, confirmDialog, dialog } from './dom.js';
-import { PEN_COLORS, PEN_COLOR_NAMES, HL_COLORS, HL_COLOR_NAMES } from '../config.js';
+import { pickColor } from './colorpicker.js';
+import { PEN_COLORS, PEN_COLOR_NAMES, HL_COLORS, HL_COLOR_NAMES, DEFAULT_CUSTOM_COLOR, DEFAULT_CUSTOM_HL_COLOR } from '../config.js';
 
 const PREFS_KEY = 'notizen:prefs';
 const RELOAD_MS = 300;
@@ -119,18 +120,19 @@ export async function mountEditor(el, { noteId }, ctx) {
     const type = selInfo.hasPen ? 'p' : 'h';
     const list = type === 'p' ? PEN_COLORS : HL_COLORS;
     const names = type === 'p' ? PEN_COLOR_NAMES : HL_COLOR_NAMES;
-    const picker = h('input', { type: 'color', value: '#0a8f8f', className: 'tb-color-input' });
     const r = await dialog({
       title: type === 'p' ? 'Farbe der Auswahl' : 'Farbe der Markierung',
       body: (close) => h('div', { className: 'sel-colors' },
         list.map((c, i) => h('button', { type: 'button', className: 'sw', title: names[i], 'aria-label': names[i], style: { background: c }, onclick: () => close(i) })),
         h('button', { type: 'button', className: 'sw', title: 'Eigene Farbe', 'aria-label': 'Eigene Farbe',
           style: { background: 'conic-gradient(#ff3b30, #ffcc00, #34c759, #00c7be, #007aff, #af52de, #ff2d55, #ff3b30)' },
-          onclick: () => { picker.onchange = () => close(picker.value.toLowerCase()); try { picker.showPicker ? picker.showPicker() : picker.click(); } catch { picker.click(); } } }),
-        picker),
+          onclick: () => close('custom') })),
       actions: [{ label: 'Abbrechen', value: null }],
     });
-    if (r !== null && r !== undefined) surface.selectionAction('color', r, type);
+    if (r === null || r === undefined) return;
+    if (r !== 'custom') { surface.selectionAction('color', r, type); return; }
+    const hex = await pickColor({ title: 'Eigene Farbe der Auswahl', value: type === 'p' ? DEFAULT_CUSTOM_COLOR : DEFAULT_CUSTOM_HL_COLOR });
+    if (hex && selInfo) surface.selectionAction('color', hex, type);
   }
 
 

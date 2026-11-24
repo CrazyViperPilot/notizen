@@ -68,13 +68,11 @@ test('Lasso, Teil-Radierer, eigene Farbe, Formen-Halten, Seitenübersicht', { ti
     await pen(page, [[400, 850], [400, 900], [400, 950]]);
     await until(async () => (await strokesOf(page, noteId)).length === 4, { what: 'Strich geteilt' });
 
-    // ── Eigene Farbe für den Stift (Farbwähler-Eingabe wie im Werkzeugkasten) ──
+    // ── Eigene Farbe für den Stift (eigener Farbwähler-Dialog) ──
     await page.getByRole('button', { name: 'Stift', exact: true }).click();
-    await page.locator('.tb input[type=color]').evaluate((el) => {
-      el.value = '#00aa55';
-      el.dispatchEvent(new Event('input', { bubbles: true }));
-      el.dispatchEvent(new Event('change', { bubbles: true }));
-    });
+    await page.locator('.tb-custom').click();
+    await page.locator('.cp-hex').fill('#00aa55');
+    await page.getByRole('button', { name: 'Übernehmen', exact: true }).click();
     const countBeforeColor = (await strokesOf(page, noteId)).length;
     await pen(page, segment(300, 1300, 800, 1300));
     await until(async () => {
