@@ -509,3 +509,12 @@ Angelehnt an deutsche Schulhefte; alle Maße in `config.js` (`LINEATUR`), damit 
 - `test/e2e/*.e2e.mjs` (node:test + playwright): Login, Ordner/Notiz, Pencil-Striche + Neuladen, Offline + Sync zwischen zwei Kontexten,
   Lasso, Vokabel-Abfrage, Foto-Import, Teilen, Admin. Gestartet mit `npm run test:e2e` gegen `E2E_BASE` (Standard http://127.0.0.1:8080/).
 - `test.yml`: zusätzlicher Job mit MySQL-Service, `php -S`, Playwright-Chromium, `npm run test:e2e`.
+
+### 11.7 Gesten und Glättung (aus Zeichen-Apps übernommen)
+- **Zwei Finger tippen = Rückgängig, drei Finger tippen = Wiederholen** (alle Finger < 350 ms, Bewegung < 12 px; ein dabei
+  entstandener Mini-Zoom wird zurückgesetzt). Event `gesture` {action: 'undo'|'redo'} → kurzer Hinweis im Editor.
+- **Pipette:** Ein Finger 500 ms ruhig auf einem Strich → Event `pickcolor` {type, color}; der Editor stellt Werkzeug und Farbe
+  ein (Stift vor Textmarker; Hex-Farben werden zur eigenen Farbe des Werkzeugs).
+- **Ganze Seite:** Schnelles Zusammenziehen (< 350 ms, Zoom sinkt um > 20 %) bei Zoom > 1 springt auf Zoom 1 (Seitenbreite).
+- **Glättung:** `localStorage['notizen:prefs'].smoothing` = 'direct' | 'normal' | 'strong' (Konto-Seite) → `Smoother(k)` mit
+  k = 0,85 / 0,55 / 0,3 (`SMOOTHING` in stroke.js); Surface-Option `smoothing`, `setSmoothing()`.

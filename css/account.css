@@ -80,3 +80,5 @@
   .nz-status.syncing .nz-status-glyph { animation: none; }
   .acc-bar-fill { transition: none; }
 }
+.acc-seg { display: inline-flex; gap: 4px; }
+.acc-seg .btn { min-width: 76px; }

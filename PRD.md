@@ -94,6 +94,9 @@ Das erste Admin-Konto kommt aus GitHub-Secrets (Abschnitt 9). Weitere Admins kan
 ### 6.3 Eingabe
 - **Nur der Apple Pencil zeichnet.** Finger scrollen (1 Finger) und zoomen (2 Finger, 100–400 %).
   Die aufliegende Handfläche löst nichts aus.
+- **Gesten:** mit zwei Fingern tippen = Rückgängig, mit drei Fingern = Wiederholen; lange mit dem Finger auf einen Strich drücken =
+  dessen Farbe übernehmen (Pipette); schnell mit zwei Fingern zusammenziehen = zurück auf ganze Seitenbreite.
+- **Glättung** der Schrift im Konto einstellbar: Direkt / Normal / Stark.
 - Wer keinen Stift hat (anderes Gerät, Maus), kann in den Einstellungen **„Mit Finger/Maus zeichnen“** einschalten.
   Dann scrollt man mit zwei Fingern.
 - Die Linie folgt dem Stift ohne spürbare Verzögerung, die Darstellung ist auch beim Zoomen scharf.

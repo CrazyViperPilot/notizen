@@ -12,7 +12,7 @@
 
 import { isHexColor, PAGE, PAGE_GAP, PAGE_PAD, ZOOM_MIN, ZOOM_MAX, ERASER_RADIUS, UNDO_LIMIT, SAVE_DELAY } from '../config.js';
 import { decodeStrokes, encodeStrokes, strokeId } from './codec.js';
-import { Smoother, normPressure, hitTestSegment, bbox, eraseSplit } from './stroke.js';
+import { Smoother, SMOOTHING, normPressure, hitTest, hitTestSegment, bbox, eraseSplit } from './stroke.js';
 import { drawPage, drawPen, drawHighlighter, setPageTransform } from './render.js';
 import { vocabLayout } from './paper.js';
 
@@ -63,8 +63,11 @@ export function createSurface(container, opts = {}) {
 }
 
 class Surface extends EventTarget {
-  constructor(container, { readOnly = false, fingerDraw = false, getImage = null } = {}) {
+  constructor(container, { readOnly = false, fingerDraw = false, getImage = null, smoothing = 'normal' } = {}) {
     super();
+    this.smoothing = smoothing;  // 'direct' | 'normal' | 'strong'
+    this._mtap = null;           // two/three-finger tap (undo/redo) candidate
+    this._lp = null;             // long press (color picker) candidate
     this.getImage = getImage;   // (assetId) → Promise<CanvasImageSource|null> for page backgrounds
     this.images = new Map();    // assetId → {img, loading}
     this._recognize = null;     // shape recognizer (js/ink/shapes.js), loaded lazily
@@ -284,6 +287,10 @@ class Surface extends EventTarget {
 
   hasVocab() {
     return this.pages.some((P) => P.paper === 'vocab');
+  }
+
+  setSmoothing(level) {
+    this.smoothing = SMOOTHING[level] ? level : 'normal';
   }
 
   setFingerDraw(on) {
@@ -960,6 +967,7 @@ class Surface extends EventTarget {
       if (first.smoother.out.length / 3 < 8) {
         this._abortDraw();
         this.touches.set(first.pointerId, first.lastScreen);
+        this._mtap = { t0: e.timeStamp - 80, max: 1, moved: false, start: new Map([[first.pointerId, first.lastScreen]]), z: this.z, ox: this.ox, oy: this.oy };
       } else return;
     }
 
@@ -967,9 +975,60 @@ class Surface extends EventTarget {
       e.preventDefault();
       this._capture(e);
       this._stopInertia();
+      if (this.touches.size === 0) this._mtap = { t0: e.timeStamp, max: 0, moved: false, start: new Map(), z: this.z, ox: this.ox, oy: this.oy };
       this.touches.set(e.pointerId, pt);
+      if (this._mtap) { this._mtap.start.set(e.pointerId, pt); this._mtap.max = Math.max(this._mtap.max, this.touches.size); }
+      this._cancelLongPress();
+      if (this.touches.size === 1 && e.pointerType === 'touch') this._armLongPress(e.pointerId, pt);
       this._startGesture();
     }
+  }
+
+  // ───── finger gestures: two/three-finger tap (undo/redo), long press (pick color) ─────
+
+  _armLongPress(id, pt) {
+    this._lp = { id, pt, timer: setTimeout(() => this._longPress(), 500) };
+  }
+
+  _cancelLongPress() {
+    if (this._lp) clearTimeout(this._lp.timer);
+    this._lp = null;
+  }
+
+  /** Long press with one finger on a stroke: take over its color (like the eyedropper in drawing apps). */
+  _longPress() {
+    const lp = this._lp;
+    this._lp = null;
+    if (!lp || this.touches.size !== 1 || !this.touches.has(lp.id)) return;
+    const hit = this._pageAt(lp.pt.x, lp.pt.y);
+    if (!hit) return;
+    const r = 14 / (this.z * this.k);
+    const strokes = hit.P.strokes;
+    let found = null;
+    for (let i = strokes.length - 1; i >= 0 && !found; i--) if (strokes[i].type !== 'h' && hitTest(strokes[i], hit.ux, hit.uy, r)) found = strokes[i];
+    for (let i = strokes.length - 1; i >= 0 && !found; i--) if (strokes[i].type === 'h' && hitTest(strokes[i], hit.ux, hit.uy, r)) found = strokes[i];
+    if (!found) return;
+    // The finger stays down: no panning, no tap actions until it is lifted.
+    this.gesture = null;
+    this._mtap = null;
+    this._tap = null;
+    this._lpDone = true;
+    this.dispatchEvent(new CustomEvent('pickcolor', { detail: { type: found.type, color: found.color } }));
+  }
+
+  /** Checks a finished finger tap with 2 or 3 fingers. Returns true if it was handled. */
+  _multiTapEnd(t) {
+    const tap = this._mtap;
+    this._mtap = null;
+    if (!tap || tap.moved || tap.max < 2 || tap.max > 3 || t - tap.t0 > 350) return false;
+    // Undo any tiny zoom/pan the fingers caused.
+    this.z = tap.z; this.ox = tap.ox; this.oy = tap.oy;
+    this.gesture = null;
+    this._clamp();
+    this._update();
+    if (tap.max === 2) this.undo(); else this.redo();
+    this.dispatchEvent(new CustomEvent('gesture', { detail: { action: tap.max === 2 ? 'undo' : 'redo' } }));
+    return true;
   }
 
   _capture(e) {
@@ -986,7 +1045,14 @@ class Surface extends EventTarget {
     }
     if (!this.touches.has(e.pointerId)) return;
     e.preventDefault();
-    this.touches.set(e.pointerId, this._local(e));
+    const mp = this._local(e);
+    this.touches.set(e.pointerId, mp);
+    if (this._mtap) {
+      const s0 = this._mtap.start.get(e.pointerId);
+      if (s0 && Math.hypot(mp.x - s0.x, mp.y - s0.y) > 12) this._mtap.moved = true;
+    }
+    if (this._lp && this._lp.id === e.pointerId && Math.hypot(mp.x - this._lp.pt.x, mp.y - this._lp.pt.y) > 10) this._cancelLongPress();
+    if (this._lpDone) return; // color picked: finger rests, no panning
     this._moveGesture(e.timeStamp);
   }
 
@@ -998,6 +1064,12 @@ class Surface extends EventTarget {
     }
     if (!this.touches.has(e.pointerId)) return;
     this.touches.delete(e.pointerId);
+    this._cancelLongPress();
+    if (this._lpDone) {
+      if (!this.touches.size) { this._lpDone = false; this.gesture = null; this._tap = null; }
+      return;
+    }
+    if (this.touches.size === 0 && e.type === 'pointerup' && this._multiTapEnd(e.timeStamp)) { this._tap = null; return; }
     const tap = this._tap;
     this._tap = null;
     if (tap && tap.id === e.pointerId && e.type === 'pointerup') {
@@ -1051,7 +1123,7 @@ class Surface extends EventTarget {
       const [a, b] = pts;
       const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
       this.gesture = {
-        type: 'pinch', d0: Math.max(10, Math.hypot(a.x - b.x, a.y - b.y)), z0: this.z,
+        type: 'pinch', d0: Math.max(10, Math.hypot(a.x - b.x, a.y - b.y)), z0: this.z, t0: performance.now(),
         docX: (mx + this.ox) / this.z, docY: (my + this.oy) / this.z,
       };
     }
@@ -1079,6 +1151,19 @@ class Surface extends EventTarget {
 
   _endGesture(t) {
     const g = this.gesture;
+    // Quick pinch together while zoomed in: back to the whole page width.
+    if (g && g.type === 'pinch' && g.z0 > 1.05 && this.z < g.z0 * 0.8 && performance.now() - g.t0 < 350) {
+      const cy = (this.oy + this.H / 2) / this.z;
+      this.z = 1;
+      this.ox = 0;
+      this.oy = cy - this.H / 2;
+      this.gesture = null;
+      this._clamp();
+      this._update();
+      this._invalidateDetail();
+      if (this.touches.size > 0) this._startGesture();
+      return;
+    }
     if (this.touches.size > 0) { this._startGesture(); return; } // pinch → pan with the remaining finger
     this.gesture = null;
     if (g && g.type === 'pan' && g.samples.length >= 2) {
@@ -1134,7 +1219,7 @@ class Surface extends EventTarget {
     this.drawing = {
       pointerId: e.pointerId, pointerType: e.pointerType, P, kind, lasso,
       eraseMode: this.tool.mode === 'part' ? 'part' : 'stroke', before: kind === 'eraser' && this.tool.mode === 'part' ? P.strokes.map(snap) : null,
-      smoother: new Smoother(), drawn: 0, lastScreen: pt,
+      smoother: new Smoother(SMOOTHING[this.smoothing] || SMOOTHING.normal), drawn: 0, lastScreen: pt,
       erased: [], lastU: null, splitChanged: false,
       holdPt: null, holdTimer: 0, snapped: null, snapDrawn: false,
       stroke: kind === 'eraser' || kind === 'lasso' ? null : {

@@ -18,8 +18,12 @@ export function normPressure(p, pointerType) {
 }
 
 /** Streaming input filter. Used live while drawing and for finished strokes, so both look identical. */
+/** Smoothing levels (setting „Glättung“): low-pass factor for positions, 1 = raw input. */
+export const SMOOTHING = { direct: 0.85, normal: SMOOTH, strong: 0.3 };
+
 export class Smoother {
-  constructor() {
+  constructor(k = SMOOTH) {
+    this.k = k;
     this.out = [];       // x, y, p (ints)
     this.sx = 0; this.sy = 0; this.sp = 0;
     this.n = 0;
@@ -31,8 +35,8 @@ export class Smoother {
     if (this.n === 0) {
       this.sx = x; this.sy = y; this.sp = pi;
     } else {
-      this.sx += (x - this.sx) * SMOOTH;
-      this.sy += (y - this.sy) * SMOOTH;
+      this.sx += (x - this.sx) * this.k;
+      this.sy += (y - this.sy) * this.k;
       this.sp += (pi - this.sp) * SMOOTH_P;
     }
     this.n++;

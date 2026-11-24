@@ -79,6 +79,18 @@ export async function mountAccount(el, params, ctx) {
     },
   });
 
+  const smoothLevels = [['direct', 'Direkt'], ['normal', 'Normal'], ['strong', 'Stark']];
+  const smoothNow = ['direct', 'normal', 'strong'].includes(prefs.smoothing) ? prefs.smoothing : 'normal';
+  const smoothBtns = smoothLevels.map(([lvl, label]) => h('button', {
+    type: 'button', className: 'btn' + (lvl === smoothNow ? ' on' : ''), text: label, 'aria-pressed': lvl === smoothNow ? 'true' : 'false',
+    onclick: () => {
+      const p = readPrefs();
+      p.smoothing = lvl;
+      writePrefs(p);
+      smoothBtns.forEach((b, i) => { const on = smoothLevels[i][0] === lvl; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); });
+    },
+  }));
+
   const root = h('div', { className: 'acc' },
     h('header', { className: 'acc-head' },
       h('button', { className: 'btn ghost acc-back', type: 'button', text: '‹ Übersicht', onclick: () => ctx.navigate('#/') }),
@@ -108,7 +120,10 @@ export async function mountAccount(el, params, ctx) {
         h('label', { className: 'acc-switch' },
           h('span', { text: 'Mit Finger zeichnen' }),
           drawInput),
-        h('p', { className: 'muted acc-hint', text: 'Für Geräte ohne Apple Pencil. Dann scrollst du mit zwei Fingern.' })),
+        h('p', { className: 'muted acc-hint', text: 'Für Geräte ohne Apple Pencil. Dann scrollst du mit zwei Fingern.' }),
+        h('div', { className: 'acc-row' }, h('span', { text: 'Glättung der Schrift' }), h('div', { className: 'acc-seg', role: 'group', 'aria-label': 'Glättung' }, smoothBtns)),
+        h('p', { className: 'muted acc-hint', text: '„Direkt“ folgt dem Stift ganz genau, „Stark“ macht zittrige Linien ruhiger. Gilt beim nächsten Öffnen einer Notiz.' }),
+        h('p', { className: 'muted acc-hint', text: 'Gesten: mit zwei Fingern tippen = Rückgängig, mit drei Fingern = Wiederholen, lange mit dem Finger auf einen Strich drücken = dessen Farbe übernehmen, schnell mit zwei Fingern zusammenziehen = ganze Seite.' })),
       user.role === 'admin'
         ? h('a', { className: 'btn acc-admin', href: 'admin.html', text: 'Admin-Bereich öffnen' })
         : null));

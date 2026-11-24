@@ -15,6 +15,13 @@ import { PEN_COLORS, PEN_COLOR_NAMES, HL_COLORS, HL_COLOR_NAMES } from '../confi
 const PREFS_KEY = 'notizen:prefs';
 const RELOAD_MS = 300;
 
+function smoothingPref() {
+  try {
+    const p = JSON.parse(localStorage.getItem(PREFS_KEY));
+    return p && ['direct', 'normal', 'strong'].includes(p.smoothing) ? p.smoothing : 'normal';
+  } catch { return 'normal'; }
+}
+
 function fingerDrawPref() {
   try {
     const p = JSON.parse(localStorage.getItem(PREFS_KEY));
@@ -177,7 +184,16 @@ export async function mountEditor(el, { noteId }, ctx) {
     toolbar.setQuiz(surface.hasVocab(), false);
   }
 
-  const surface = createSurface(holder, { fingerDraw: fingerDrawPref(), getImage: (id) => model.getImage(id, { noteId }) });
+  const surface = createSurface(holder, { fingerDraw: fingerDrawPref(), smoothing: smoothingPref(), getImage: (id) => model.getImage(id, { noteId }) });
+  // Finger gestures: two/three-finger tap = undo/redo, long press on a stroke = take its color.
+  surface.addEventListener('gesture', (e) => toast(e.detail.action === 'undo' ? '↶ Rückgängig' : '↷ Wiederholen', { ms: 900 }));
+  surface.addEventListener('pickcolor', (e) => {
+    const cur = toolbar.getTool();
+    const kind = e.detail.type === 'h' ? 'highlighter' : 'pen';
+    toolbar.setTool({ kind, color: e.detail.color, width: kind === 'pen' ? (cur.kind === 'pen' ? cur.width : 1) : 0 });
+    surface.setTool(toolbar.getTool());
+    toast('Farbe übernommen', { ms: 1200 });
+  });
   surface.addEventListener('selection', (e) => renderSelBar(e.detail));
   surface.addEventListener('quiz', (e) => { quizAnswer.hidden = !(quizSide && e.detail && e.detail.open); });
   document.addEventListener('keydown', onSelKey);

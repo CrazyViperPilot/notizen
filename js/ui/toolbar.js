@@ -312,9 +312,11 @@ export function createToolbar({ onTool, onUndo, onRedo, onBack, onTitle, onPageM
       kind = t.kind;
       if (kind === 'pen') {
         mem.pen.color = penColorOf(t.color);
+        if (isHexColor(t.color)) mem.pen.custom = t.color.toLowerCase();
         mem.pen.width = idx(t.width, PEN_WIDTHS.length);
       } else if (kind === 'highlighter') {
         mem.highlighter.color = hlColorOf(t.color);
+        if (isHexColor(t.color)) mem.highlighter.custom = t.color.toLowerCase();
       } else if (kind === 'eraser' && (t.mode === 'part' || t.mode === 'stroke')) {
         mem.eraser.mode = t.mode;
       }
