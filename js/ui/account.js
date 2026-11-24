@@ -174,7 +174,8 @@ export async function mountAccount(el, params, ctx) {
     pwBusy = true;
     pwBtn.disabled = true;
     try {
-      await api.post('password', { old: oldPw, new: newPw });
+      const res = await api.post('password', { old: oldPw, new: newPw });
+      api.setCsrf(res.csrf);
       if (!alive) return;
       oldIn.value = '';
       newIn.value = '';

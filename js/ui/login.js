@@ -104,7 +104,8 @@ export function showLogin({ api, forceChange = false, user = null, reason = null
           setBusy(true);
           try {
             if (!changed) {
-              await api.post('password', { new: a });
+              const res = await api.post('password', { new: a });
+              api.setCsrf(res.csrf);
               changed = true;
             }
             const me = await api.get('me');

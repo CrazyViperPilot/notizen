@@ -147,7 +147,7 @@ function route_admin_user_update($admin)
             if ($name !== $t['display_name']) {
                 $sets[] = 'display_name = ?';
                 $params[] = $name;
-                $changes[] = 'display_name=' . $name;
+                $changes[] = 'display_name=' . str_replace([',', '='], [' ', ' '], $name);
                 $new['display_name'] = $name;
             }
         }
@@ -197,7 +197,7 @@ function route_admin_user_reset($admin)
         admin_log($admin['id'], 'reset_password', $id, 'username=' . $t['username']);
         return $password;
     });
-    if ($id === (int)$admin['id']) set_cookie(NZ_COOKIE, '', 0);
+    if ($id === (int)$admin['id']) set_cookie(session_cookie_name(), '', 0);
     return ['temp_password' => $temp];
 }
 
@@ -233,7 +233,7 @@ function route_admin_user_logout($admin)
         end_sessions_for($id);
         admin_log($admin['id'], 'logout_user', $id, 'username=' . $t['username']);
     });
-    if ($id === (int)$admin['id']) set_cookie(NZ_COOKIE, '', 0);
+    if ($id === (int)$admin['id']) set_cookie(session_cookie_name(), '', 0);
     return [];
 }
 
@@ -381,7 +381,7 @@ function route_admin_asset($admin)
     if (!asset_id_valid($id)) fail(400, 'invalid', 'Ungültige Bild-ID.');
     $asset = asset_row($userId, $id);
     if ($asset === null) fail(404, 'not_found', 'Bild nicht gefunden.');
-    return ['__raw' => $asset['data'], '__type' => $asset['mime'], '__cache' => NZ_ASSET_CACHE];
+    return ['__raw' => $asset['data'], '__type' => $asset['mime'], '__cache' => 'no-store'];
 }
 
 route('admin_export_user', 'GET', 'route_admin_export_user', 'admin');

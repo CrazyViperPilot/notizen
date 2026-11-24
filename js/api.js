@@ -45,7 +45,7 @@ async function send(method, route, params, body) {
       method,
       credentials: 'same-origin',
       cache: 'no-store',
-      headers: method === 'POST' ? { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf } : { 'X-CSRF-Token': csrf },
+      headers: method === 'POST' ? { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf } : {},
       body: method === 'POST' ? JSON.stringify(body || {}) : undefined,
       signal: ctrl.signal,
     });

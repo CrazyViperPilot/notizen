@@ -296,3 +296,20 @@ function test_asset_released_by_purged_page()
     assert_status(404, $a->get('asset_get', ['id' => $id]), 'not_found');
     assert_eq(0, asset_test_used($a));
 }
+
+function test_asset_put_rejects_fake_jpeg_and_stores_real_dimensions()
+{
+    $a = user_client('anna');
+    // Fake JPEG with valid 3-byte magic prefix but invalid JPEG body must be rejected.
+    $fake = "\xFF\xD8\xFF" . '<html><script>alert(1)</script></html>';
+    assert_status(400, $a->post('asset_put', asset_test_body($fake)), 'invalid');
+    assert_eq(0, (int)val('SELECT COUNT(*) FROM {assets}'));
+
+    // Spoofed w/h on a real 1x1 JPEG must be overwritten with server-verified dimensions.
+    $real = asset_test_bytes('-spoofed');
+    $body = ['w' => 9999, 'h' => 8888] + asset_test_body($real);
+    assert_status(200, $a->post('asset_put', $body));
+    $row = one('SELECT w, h FROM {assets} WHERE user_id = ? AND id = ?', [asset_test_user_id('anna'), $body['id']]);
+    assert_eq(1, (int)$row['w'], 'echte Breite gespeichert');
+    assert_eq(1, (int)$row['h'], 'echte Höhe gespeichert');
+}

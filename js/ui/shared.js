@@ -164,7 +164,7 @@ export async function mountSharedNote(el, { noteId }, ctx) {
     canvas);
 
   // Hintergrundbilder (ARCHITEKTUR 10.1): lokal bzw. per asset_get mit note (Lesezugriff auf die geteilte Notiz)
-  const surface = createSurface(canvas, { readOnly: true, getImage: (id) => ctx.model.getImage(id, { noteId }) });
+  const surface = createSurface(canvas, { readOnly: true, getImage: (id) => ctx.model.getImage(id, { noteId, store: false }) });
   surface.addEventListener('pagechange', onPage);
 
   load();

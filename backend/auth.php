@@ -57,12 +57,18 @@ function user_public(array $u)
     ];
 }
 
+/** Cookie name for the session token: __Secure- prefix when cookie_secure is enabled (never falls back). */
+function session_cookie_name()
+{
+    return cfg('cookie_secure') ? '__Secure-' . NZ_COOKIE : NZ_COOKIE;
+}
+
 /** Logged-in, active user row (+ '_sid' hash, '_csrf') or null. Cached per request. */
 function current_user()
 {
     if ($GLOBALS['NZ_USER'] !== false) return $GLOBALS['NZ_USER'];
     $GLOBALS['NZ_USER'] = null;
-    $sid = cookie_in(NZ_COOKIE);
+    $sid = cookie_in(session_cookie_name());
     if ($sid === '' || strlen($sid) > 100) return null;
     $hash = hash('sha256', $sid);
     $now = now_ms();
@@ -72,7 +78,7 @@ function current_user()
     if (!$row) return null;
     if ($now - (int)$row['_seen'] > NZ_TOUCH_MS) {
         q('UPDATE {sessions} SET last_seen_at = ?, expires_at = ? WHERE id_hash = ?', [$now, $now + NZ_SESSION_MS, $hash]);
-        set_cookie(NZ_COOKIE, $sid, (int)(NZ_SESSION_MS / 1000));
+        set_cookie(session_cookie_name(), $sid, (int)(NZ_SESSION_MS / 1000));
     }
     unset($row['_seen']);
     return $GLOBALS['NZ_USER'] = $row;
@@ -94,16 +100,40 @@ function require_admin()
     return $u;
 }
 
-/** Same-origin check + X-CSRF-Token matching the session. Called by dispatch() for every POST except login. */
+/** Enforces JSON Content-Type, Sec-Fetch-Site and Origin same-origin checks. Called by dispatch() for all POSTs including login. */
+function require_same_origin()
+{
+    $ct = trim(header_in('Content-Type'));
+    if (preg_match('/^application\/json(?:\s*;|$)/i', $ct) !== 1) {
+        fail(415, 'bad_content_type', 'Nur application/json ist erlaubt.');
+    }
+    $sfs = trim(header_in('Sec-Fetch-Site'));
+    if ($sfs !== '' && strtolower($sfs) !== 'same-origin') {
+        fail(403, 'bad_origin', 'Ungültige Herkunft der Anfrage.');
+    }
+    $origin = trim(header_in('Origin'));
+    if ($origin !== '') {
+        if (strtolower($origin) === 'null') fail(403, 'bad_origin', 'Ungültige Herkunft der Anfrage.');
+        $parts = parse_url($origin);
+        if (!is_array($parts) || !isset($parts['scheme'], $parts['host']) || $parts['host'] === '' || isset($parts['user']) || isset($parts['pass'])) {
+            fail(403, 'bad_origin', 'Ungültige Herkunft der Anfrage.');
+        }
+        $scheme = strtolower($parts['scheme']);
+        if (cfg('cookie_secure')) {
+            if ($scheme !== 'https') fail(403, 'bad_origin', 'Ungültige Herkunft der Anfrage.');
+        } else {
+            if ($scheme !== 'http' && $scheme !== 'https') fail(403, 'bad_origin', 'Ungültige Herkunft der Anfrage.');
+        }
+        $port = isset($parts['port']) ? ':' . $parts['port'] : '';
+        $o = strtolower($parts['host'] . $port);
+        $reqHost = strtolower(trim(header_in('Host')));
+        if ($reqHost === '' || $o !== $reqHost) fail(403, 'bad_origin', 'Ungültige Herkunft der Anfrage.');
+    }
+}
+
+/** X-CSRF-Token matching the session. Called by dispatch() for every POST except login (after require_same_origin). */
 function require_csrf()
 {
-    $origin = header_in('Origin');
-    if ($origin !== '' && $origin !== 'null') {
-        $host = parse_url($origin, PHP_URL_HOST);
-        $port = parse_url($origin, PHP_URL_PORT);
-        $o = strtolower($host . ($port ? ':' . $port : ''));
-        if ($o !== strtolower(header_in('Host'))) fail(403, 'bad_origin', 'Ungültige Herkunft der Anfrage.');
-    }
     $u = current_user();
     if (!$u) return; // require_user() reports 401 afterwards
     $t = header_in('X-CSRF-Token');
@@ -118,7 +148,7 @@ function create_session($userId)
     $now = now_ms();
     q('INSERT INTO {sessions} (id_hash, user_id, csrf, created_at, last_seen_at, expires_at, user_agent) VALUES (?, ?, ?, ?, ?, ?, ?)',
         [hash('sha256', $sid), (int)$userId, $csrf, $now, $now, $now + NZ_SESSION_MS, mb_substr(header_in('User-Agent'), 0, 200, 'UTF-8')]);
-    set_cookie(NZ_COOKIE, $sid, (int)(NZ_SESSION_MS / 1000));
+    set_cookie(session_cookie_name(), $sid, (int)(NZ_SESSION_MS / 1000));
     return $csrf;
 }
 
@@ -155,7 +185,10 @@ function route_login()
         q('INSERT INTO {login_attempts} (username, ip, at) VALUES (?, ?, ?)', [$username, $ip, now_ms()]);
         fail(401, 'bad_credentials', 'Benutzername oder Passwort falsch.');
     }
-    if ($u['status'] !== 'active') fail(403, 'locked', 'Dieses Konto ist gesperrt.');
+    if ($u['status'] !== 'active') {
+        q('INSERT INTO {login_attempts} (username, ip, at) VALUES (?, ?, ?)', [$username, $ip, now_ms()]);
+        fail(403, 'locked', 'Dieses Konto ist gesperrt.');
+    }
 
     if (password_needs_rehash($u['password_hash'], PASSWORD_DEFAULT)) {
         q('UPDATE {users} SET password_hash = ? WHERE id = ?', [hash_password($password), $u['id']]);
@@ -170,7 +203,7 @@ function route_login()
 function route_logout($u)
 {
     q('DELETE FROM {sessions} WHERE id_hash = ?', [$u['_sid']]);
-    set_cookie(NZ_COOKIE, '', 0);
+    set_cookie(session_cookie_name(), '', 0);
     // "Abmelden und Daten löschen": also drop the browser's HTTP cache of this site (cached page images).
     if (field('wipe') === true) add_header('Clear-Site-Data: "cache"');
     return [];

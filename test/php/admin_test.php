@@ -501,7 +501,7 @@ function test_admin_asset_binary()
     assert_status(200, $r);
     assert_eq('image/jpeg', $r['json']['__type']);
     assert_eq($bytes, $r['json']['__raw']);
-    assert_eq(NZ_ASSET_CACHE, $r['json']['__cache']);
+    assert_eq('no-store', $r['json']['__cache']);
     assert_eq($logBefore, (int)val('SELECT COUNT(*) FROM {admin_log}'), 'kein Protokoll pro Bild');
 }
 
@@ -518,4 +518,16 @@ function test_admin_asset_not_found_and_errors()
     assert_status(400, $admin->get('admin_asset', ['user' => (string)$annaId, 'id' => 'nope']), 'invalid');
     assert_status(400, $admin->get('admin_asset', ['id' => $id]), 'invalid');
     assert_status(403, $bert->get('admin_asset', ['user' => (string)$annaId, 'id' => $id]), 'forbidden');
+}
+
+function test_admin_log_sanitizes_display_name()
+{
+    $admin = admin_test_client();
+    $anna = make_user('anna');
+    $r = $admin->post('admin_user_update', ['id' => $anna, 'display_name' => 'Anna, role=admin']);
+    assert_status(200, $r);
+    assert_eq('Anna, role=admin', $r['json']['user']['display_name']);
+    $log = $admin->get('admin_log')['json']['entries'][0];
+    assert_eq('update_user', $log['action']);
+    assert_eq('display_name=Anna  role admin', $log['details']);
 }

@@ -3,7 +3,7 @@ if (!defined('NZ_ENTRY')) { http_response_code(403); exit; }
 // Vorlage. Auf dem Server erzeugt der Deploy-Workflow config.php aus den Repository-Secrets.
 // Lokal: nach config.php kopieren und anpassen (config.php ist in .gitignore).
 // admin.password_hash: php -r 'echo password_hash("PASSWORT", PASSWORD_DEFAULT);'
-// admin.fp:            php -r 'echo hash("sha256", "BENUTZER\nPASSWORT");'
+// admin.fp:            php -r 'echo hash_pbkdf2("sha256", "PASSWORT", "notizen-admin-fp:BENUTZER", 600000);'
 return [
     'db' => ['host' => '127.0.0.1', 'port' => 3306, 'name' => 'notizen', 'user' => 'notizen', 'pass' => 'notizen', 'prefix' => 'notizen_'],
     'base_path' => '/',

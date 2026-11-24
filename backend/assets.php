@@ -57,7 +57,11 @@ function route_asset_put($u)
     $bytes = base64_decode($data, true);
     if ($bytes === false || $bytes === '') fail(400, 'invalid', 'Bilddaten ungültig.');
     if (strlen($bytes) > NZ_ASSET_MAX_BYTES) fail(413, 'too_large', 'Das Bild ist zu groß (höchstens 8 MB).');
-    if (substr($bytes, 0, 3) !== "\xFF\xD8\xFF") fail(400, 'invalid', 'Kein JPEG-Bild.');
+    $info = @getimagesizefromstring($bytes);
+    if ($info === false || $info[2] !== IMAGETYPE_JPEG) fail(400, 'invalid', 'Kein JPEG-Bild.');
+    $w = (int)$info[0];
+    $h = (int)$info[1];
+    if ($w < 1 || $h < 1 || $w > NZ_ASSET_MAX_SIDE || $h > NZ_ASSET_MAX_SIDE) fail(400, 'invalid', 'Bildmaße ungültig.');
     if (hash('sha256', $bytes) !== $id) fail(400, 'invalid', 'Die Bild-ID passt nicht zum Inhalt.');
 
     $uid = (int)$u['id'];

@@ -1,7 +1,7 @@
 // Notizen – Service Worker: app shell offline. Notes live in IndexedDB (not here); api.php and admin.html are never cached.
 // Release: bump CACHE_NAME. test/js/sw.test.mjs checks that SHELL lists every app file.
 
-const CACHE_NAME = 'notizen-v12';
+const CACHE_NAME = 'notizen-v13';
 const PREFIX = 'notizen-';
 
 const SHELL = [
@@ -73,7 +73,7 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(req.url);
   if (url.origin !== location.origin) return;
   const path = url.pathname;
-  if (path.endsWith('/api.php') || path.endsWith('/admin.html') || path.includes('/js/admin/') || path.endsWith('/labor.html')) return;
+  if (path.includes('/api.php') || path.endsWith('/admin.html') || path.includes('/js/admin/') || path.endsWith('/labor.html')) return;
 
   // Navigations: network first (fresh app after deploys), offline → cached shell.
   if (req.mode === 'navigate') {

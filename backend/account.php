@@ -7,23 +7,32 @@ function route_password($u)
     $new = field('new');
     $problem = password_problem($new);
     if ($problem) fail(400, 'weak_password', $problem);
+    $ip = client_ip();
     if (!$u['must_change_pw']) {
+        if (throttled($u['username'], $ip)) {
+            fail(429, 'too_many_attempts', 'Zu viele Fehlversuche. Bitte in 15 Minuten erneut versuchen.');
+        }
         $old = field('old', '');
-        if (!is_string($old) || !password_verify($old, $u['password_hash'])) fail(403, 'bad_password', 'Das bisherige Passwort stimmt nicht.');
+        if (!is_string($old) || !password_verify($old, $u['password_hash'])) {
+            q('INSERT INTO {login_attempts} (username, ip, at) VALUES (?, ?, ?)', [$u['username'], $ip, now_ms()]);
+            fail(403, 'bad_password', 'Das bisherige Passwort stimmt nicht.');
+        }
     }
     if (password_verify($new, $u['password_hash'])) fail(400, 'same_password', 'Bitte ein neues Passwort wählen.');
-    tx(function () use ($u, $new) {
+    $csrf = tx(function () use ($u, $new) {
         q('UPDATE {users} SET password_hash = ?, must_change_pw = 0 WHERE id = ?', [hash_password($new), $u['id']]);
-        end_sessions_for($u['id'], $u['_sid']);
+        q('DELETE FROM {login_attempts} WHERE username = ?', [$u['username']]);
+        end_sessions_for($u['id']);
+        return create_session($u['id']);
     });
     $u['must_change_pw'] = 0;
-    return ['user' => user_public($u)];
+    return ['user' => user_public($u), 'csrf' => $csrf];
 }
 
 function route_logout_all($u)
 {
     end_sessions_for($u['id']);
-    set_cookie(NZ_COOKIE, '', 0);
+    set_cookie(session_cookie_name(), '', 0);
     return [];
 }
 

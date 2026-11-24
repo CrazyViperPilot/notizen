@@ -1,6 +1,9 @@
 # Tests bei jedem Push und Pull Request: PHP 7.4 + 8.3 gegen MySQL 8 (wie auf dem Server), JS-Tests mit Node.
 name: Test
 
+permissions:
+  contents: read
+
 on:
   push:
   pull_request:
@@ -78,10 +81,10 @@ jobs:
       - name: config.php für die Testinstanz
         run: |
           php -r '
-            $p = "admin-passwort-1";
+            $u = "admin"; $p = "admin-passwort-1";
             $c = ["db" => ["host" => "127.0.0.1", "port" => 3306, "name" => "notizen", "user" => "root", "pass" => "root", "prefix" => "notizen_"],
                   "base_path" => "/", "cookie_secure" => false,
-                  "admin" => ["username" => "admin", "password_hash" => password_hash($p, PASSWORD_DEFAULT), "fp" => hash("sha256", "admin\n" . $p)]];
+                  "admin" => ["username" => $u, "password_hash" => password_hash($p, PASSWORD_DEFAULT), "fp" => hash_pbkdf2("sha256", $p, "notizen-admin-fp:" . $u, 600000)]];
             file_put_contents("config.php", "<?php\nif (!defined(\"NZ_ENTRY\")) { http_response_code(403); exit; }\nreturn " . var_export($c, true) . ";\n");
           '
       - name: PHP-Server starten

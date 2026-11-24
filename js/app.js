@@ -120,13 +120,21 @@ async function logout() {
     ],
   });
   if (!choice) return;
-  try { await api.post('logout', { wipe: choice === 'wipe' }); } catch { /* offline: cookie stays, harmless */ }
+  let logoutFailed = false;
+  try {
+    await api.post('logout', { wipe: choice === 'wipe' });
+  } catch (e) {
+    if (!(e instanceof ApiError && e.status === 401)) logoutFailed = true;
+  }
   const id = user.id;
   if (unmount) { try { unmount(); } catch { /* ignore */ } unmount = null; }
   if (choice === 'wipe') await model.wipe(id); else await model.close();
   user = null;
   writeLastUser(null);
   root.replaceChildren();
+  if (logoutFailed) {
+    toast('Offline abgemeldet – die Sitzung auf dem Server konnte nicht beendet werden. Bitte online erneut abmelden.', { type: 'error', ms: 8000 });
+  }
   const u = await login();
   await startAs(u);
   ctx.navigate('#/');

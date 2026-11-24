@@ -400,3 +400,42 @@ function test_sync_purge_clears_pinned()
     assert_eq(0, $r[0]['row']['pinned']);
     assert_eq(0, (int)val('SELECT pinned FROM {notes} WHERE id = ?', [uid_(1)]));
 }
+
+function test_sync_conflict_copy_enforces_quota()
+{
+    $a = user_client('anna');
+    $sA = '[' . str_repeat('1,', 30) . '1]'; // 63 bytes
+    $sB = '[' . str_repeat('2,', 30) . '2]'; // 63 bytes
+    $sC = '[' . str_repeat('3,', 25) . '3]'; // 53 bytes (smaller than sA, still exceeds quota with copy)
+    push($a, [ch('note', uid_(1), n_data('N')), ch('page', uid_(2), p_data(uid_(1), '[]', 1000))]);
+    push($a, [ch('page', uid_(2), p_data(uid_(1), $sA, 3000), 1)]); // rev 2, used = 63
+    // Quota allows existing page (63 B) but not an additional conflict copy.
+    q('UPDATE {users} SET quota_bytes = 100 WHERE username = ?', ['anna']);
+
+    // Server-wins branch (older timestamp, stale base_rev): conflict copy of client's strokes would exceed quota.
+    $r = push($a, [ch('page', uid_(2), p_data(uid_(1), $sB, 2000), 1)]);
+    assert_eq('rejected', $r[0]['status']);
+    assert_eq('quota', $r[0]['code']);
+    assert_eq(0, (int)val('SELECT COUNT(*) FROM {pages} WHERE conflict = 1'));
+    assert_eq(63, (int)$a->get('account')['json']['used_bytes']);
+
+    // Client-wins branch (newer timestamp, stale base_rev, even smaller strokes): existing + copy = 63 + 53 = 116 > 100.
+    $r = push($a, [ch('page', uid_(2), p_data(uid_(1), $sC, 4000), 1)]);
+    assert_eq('rejected', $r[0]['status']);
+    assert_eq('quota', $r[0]['code']);
+    assert_eq(0, (int)val('SELECT COUNT(*) FROM {pages} WHERE conflict = 1'));
+    assert_eq($sA, strokes_of($a, uid_(2)), 'Server-Seite unverändert nach Ablehnung');
+    assert_eq(63, (int)$a->get('account')['json']['used_bytes']);
+
+    // With enough quota, both conflict copies succeed.
+    q('UPDATE {users} SET quota_bytes = 250 WHERE username = ?', ['anna']);
+    $r = push($a, [ch('page', uid_(2), p_data(uid_(1), $sC, 4000), 1)]);
+    assert_eq('conflict', $r[0]['status']);
+    assert_eq(1, (int)val('SELECT COUNT(*) FROM {pages} WHERE conflict = 1'));
+    assert_eq(116, (int)$a->get('account')['json']['used_bytes']);
+
+    $r = push($a, [ch('page', uid_(2), p_data(uid_(1), $sB, 2000), 1)]);
+    assert_eq('conflict', $r[0]['status']);
+    assert_eq(2, (int)val('SELECT COUNT(*) FROM {pages} WHERE conflict = 1'));
+    assert_eq(179, (int)$a->get('account')['json']['used_bytes']);
+}

@@ -8,6 +8,9 @@
 # Daten liegen in MySQL; auf dem Webspace wird nichts gelöscht (kein --delete).
 name: Deploy
 
+permissions:
+  contents: read
+
 on:
   push:
     branches: [main]
@@ -85,7 +88,7 @@ jobs:
                        "user" => getenv("DB_USER"), "pass" => getenv("DB_PASSWORD"), "prefix" => "notizen_"],
               "base_path" => "/notizen/",
               "cookie_secure" => true,
-              "admin" => ["username" => $u, "password_hash" => password_hash($p, PASSWORD_DEFAULT), "fp" => hash("sha256", $u . "\n" . $p)],
+              "admin" => ["username" => $u, "password_hash" => password_hash($p, PASSWORD_DEFAULT), "fp" => hash_pbkdf2("sha256", $p, "notizen-admin-fp:" . $u, 600000)],
             ];
             file_put_contents("site/config.php", "<?php\nif (!defined(\"NZ_ENTRY\")) { http_response_code(403); exit; }\nreturn " . var_export($c, true) . ";\n");
           '
@@ -102,6 +105,12 @@ jobs:
           FTP_PROTOCOL: ${{ vars.FTP_PROTOCOL || 'ftps' }}
           FTP_SECURITY: ${{ vars.FTP_SECURITY || 'strict' }}
         run: |
+          if [ "$FTP_PROTOCOL" = "ftp" ]; then
+            echo "::warning::FTP_PROTOCOL=ftp überträgt Zugangsdaten und config.php unverschlüsselt."
+          fi
+          if [ "$FTP_SECURITY" = "loose" ]; then
+            echo "::warning::FTP_SECURITY=loose deaktiviert die TLS-Zertifikatsprüfung beim Upload."
+          fi
           sudo apt-get update -qq && sudo apt-get install -y -qq lftp > /dev/null
           ssl=$([ "$FTP_PROTOCOL" = "ftp" ] && echo false || echo true)
           verify=$([ "$FTP_SECURITY" = "loose" ] && echo no || echo yes)
@@ -112,9 +121,6 @@ jobs:
           set ftp:passive-mode true
           set net:timeout 20
           set net:max-retries 2
-          # Aufräumen: frühe Deploys (23.11.2026) landeten versehentlich in den Unterordnern notizen/ und site/.
-          rm -r -f ${FTP_DIR}notizen
-          rm -r -f ${FTP_DIR}site
           mirror --reverse --no-perms --verbose site/ ${FTP_DIR}
           bye
           EOF
@@ -127,9 +133,19 @@ jobs:
             echo "$1 → $code (erwartet $2)"; head -c 300 /tmp/body; echo
             [ "$code" = "$2" ] || { echo "::error::$1 liefert $code statt $2"; fail=1; }
           }
+          check_headers() {
+            hdrs=$(curl -s -D - -o /dev/null "$1")
+            for h in Content-Security-Policy X-Frame-Options X-Content-Type-Options Referrer-Policy; do
+              if ! printf '%s\n' "$hdrs" | grep -qi "^${h}:"; then
+                echo "::warning::$1 fehlt Sicherheits-Header $h"
+              fi
+            done
+          }
           check "https://phpexpert.de/notizen/api.php?r=ping" 200
           check "https://phpexpert.de/notizen/api.php?r=me" 401
           check "https://phpexpert.de/notizen/backend/db.php" 403
           check "https://phpexpert.de/notizen/config.php" 403
           check "https://phpexpert.de/notizen/migrations/001_init.sql" 403
+          check_headers "https://phpexpert.de/notizen/"
+          check_headers "https://phpexpert.de/notizen/admin.html"
           exit $fail

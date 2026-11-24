@@ -6,6 +6,8 @@ function test_ping()
     $r = (new Client())->get('ping');
     assert_status(200, $r);
     assert_eq(4, $r['json']['schema']);
+    assert_true(!array_key_exists('php', $r['json']), 'kein php in ping');
+    assert_true(!array_key_exists('mysql', $r['json']), 'kein mysql in ping');
 }
 
 function test_unknown_route_and_method()
@@ -191,7 +193,7 @@ function test_admin_route_guard()
 function test_bad_json_body()
 {
     $c = user_client('anna');
-    set_request(['method' => 'POST', 'query' => ['r' => 'password'], 'body' => '{kaputt', 'headers' => ['Host' => 'localhost', 'X-CSRF-Token' => $c->csrf], 'cookies' => $c->cookies]);
+    set_request(['method' => 'POST', 'query' => ['r' => 'password'], 'body' => '{kaputt', 'headers' => ['Host' => 'localhost', 'Content-Type' => 'application/json', 'X-CSRF-Token' => $c->csrf], 'cookies' => $c->cookies]);
     list($status, $json) = dispatch();
     assert_eq(400, $status);
     assert_eq('bad_json', $json['error']['code']);
@@ -205,4 +207,101 @@ function test_logout_wipe_clears_site_cache()
     $d = user_client('bert');
     $d->post('logout');
     assert_eq([], $GLOBALS['NZ_RES']['headers']);
+}
+
+function test_login_same_origin_and_content_type()
+{
+    make_user('anna');
+    $creds = ['username' => 'anna', 'password' => 'passwort-1234'];
+
+    // Non-JSON Content-Type rejected with 415 on login.
+    assert_status(415, (new Client())->post('login', $creds, ['Content-Type' => 'text/plain']), 'bad_content_type');
+    assert_status(415, (new Client())->post('login', $creds, ['Content-Type' => 'application/x-www-form-urlencoded']), 'bad_content_type');
+    assert_status(415, (new Client())->post('login', $creds, ['Content-Type' => '']), 'bad_content_type');
+
+    // Cross-origin Origin, Origin: null, and Sec-Fetch-Site: cross-site rejected with 403 on login.
+    assert_status(403, (new Client())->post('login', $creds, ['Origin' => 'https://boese.example']), 'bad_origin');
+    assert_status(403, (new Client())->post('login', $creds, ['Origin' => 'null']), 'bad_origin');
+    assert_status(403, (new Client())->post('login', $creds, ['Sec-Fetch-Site' => 'cross-site']), 'bad_origin');
+    assert_status(403, (new Client())->post('login', $creds, ['Sec-Fetch-Site' => 'same-site']), 'bad_origin');
+
+    // Oversized login body (> 64 KB) rejected with 413 too_large.
+    assert_status(413, (new Client())->post('login', ['username' => 'anna', 'password' => str_repeat('a', NZ_MAX_LOGIN_BODY)]), 'too_large');
+
+    // Valid JSON Content-Type with charset + Sec-Fetch-Site: same-origin + matching Origin succeeds.
+    $c = new Client();
+    assert_status(200, $c->post('login', $creds, [
+        'Content-Type' => 'application/json; charset=utf-8',
+        'Sec-Fetch-Site' => 'same-origin',
+        'Origin' => 'http://localhost',
+    ]));
+}
+
+function test_secure_cookie_prefix_and_https_origin()
+{
+    make_user('anna');
+    $cfg = test_config();
+    $cfg['cookie_secure'] = true;
+    set_config($cfg);
+
+    $creds = ['username' => 'anna', 'password' => 'passwort-1234'];
+    // HTTP Origin rejected when cookie_secure is true.
+    assert_status(403, (new Client())->post('login', $creds, ['Origin' => 'http://localhost']), 'bad_origin');
+
+    // HTTPS Origin accepted and __Secure-notizen_sid cookie is set (not plain notizen_sid).
+    $c = new Client();
+    $c->origin = 'https://localhost';
+    assert_status(200, $c->post('login', $creds));
+    assert_true(isset($c->cookies['__Secure-' . NZ_COOKIE]), '__Secure- Cookie gesetzt');
+    assert_true(!isset($c->cookies[NZ_COOKIE]), 'plain Cookie nicht gesetzt');
+    assert_status(200, $c->get('me'));
+
+    // Plain notizen_sid cookie is ignored when cookie_secure is true (no fallback).
+    $plain = new Client();
+    $plain->cookies[NZ_COOKIE] = $c->cookies['__Secure-' . NZ_COOKIE];
+    assert_status(401, $plain->get('me'), 'unauthenticated');
+
+    // Logout clears __Secure-notizen_sid.
+    assert_status(200, $c->post('logout'));
+    assert_true(!isset($c->cookies['__Secure-' . NZ_COOKIE]), '__Secure- Cookie gelöscht');
+}
+
+function test_password_change_rotates_session_and_throttles()
+{
+    $c = user_client('anna');
+    $oldSid = $c->cookies[NZ_COOKIE];
+    $oldCsrf = $c->csrf;
+
+    // 5 failed old-password attempts → 403, 6th → 429 even with correct old password.
+    for ($i = 0; $i < 5; $i++) {
+        assert_status(403, $c->post('password', ['old' => 'falsch-' . $i, 'new' => 'neues-passwort-99']), 'bad_password');
+    }
+    assert_status(429, $c->post('password', ['old' => 'passwort-1234', 'new' => 'neues-passwort-99']), 'too_many_attempts');
+
+    // After throttle window passes, valid password change succeeds and rotates cookie + CSRF token.
+    $GLOBALS['NZ_NOW'] = now_ms() + 16 * 60 * 1000;
+    $r = $c->post('password', ['old' => 'passwort-1234', 'new' => 'neues-passwort-99']);
+    assert_status(200, $r);
+    assert_true(isset($r['json']['csrf']) && $r['json']['csrf'] !== '' && $r['json']['csrf'] !== $oldCsrf, 'neues CSRF-Token');
+    assert_true(isset($c->cookies[NZ_COOKIE]) && $c->cookies[NZ_COOKIE] !== $oldSid, 'neues Sitzungs-Cookie');
+
+    // Old session cookie is invalidated.
+    $stale = new Client();
+    $stale->cookies[NZ_COOKIE] = $oldSid;
+    $stale->csrf = $oldCsrf;
+    assert_status(401, $stale->get('me'), 'unauthenticated');
+
+    // Old CSRF token rejected on new session; new CSRF token works.
+    assert_status(403, $c->post('logout_all', [], ['X-CSRF-Token' => $oldCsrf]), 'bad_csrf');
+    assert_status(200, $c->get('me'));
+    assert_eq($r['json']['csrf'], $c->get('me')['json']['csrf']);
+}
+
+function test_locked_user_login_throttled()
+{
+    make_user('anna', 'passwort-1234', 'user', ['status' => 'locked']);
+    for ($i = 0; $i < 5; $i++) {
+        assert_status(403, (new Client('10.8.0.' . $i))->post('login', ['username' => 'anna', 'password' => 'passwort-1234']), 'locked');
+    }
+    assert_status(429, (new Client('10.8.0.99'))->post('login', ['username' => 'anna', 'password' => 'passwort-1234']), 'too_many_attempts');
 }

@@ -24,6 +24,10 @@ const T_ADMIN_PASS = 'admin-passwort-123';
 
 function test_config($adminPass = T_ADMIN_PASS)
 {
+    static $fps = [];
+    if (!isset($fps[$adminPass])) {
+        $fps[$adminPass] = hash_pbkdf2('sha256', $adminPass, 'notizen-admin-fp:' . T_ADMIN_USER, 600000);
+    }
     return [
         'db' => [
             'host' => env('NZ_TEST_DB_HOST', '127.0.0.1'),
@@ -38,7 +42,7 @@ function test_config($adminPass = T_ADMIN_PASS)
         'admin' => [
             'username' => T_ADMIN_USER,
             'password_hash' => password_hash($adminPass, PASSWORD_DEFAULT),
-            'fp' => hash('sha256', T_ADMIN_USER . "\n" . $adminPass),
+            'fp' => $fps[$adminPass],
         ],
     ];
 }
@@ -60,8 +64,15 @@ class Client
     public function call($method, $route, $body = null, array $query = [], array $headers = [])
     {
         $headers += ['Host' => 'localhost', 'User-Agent' => 'test'];
+        if ($method === 'POST') {
+            $hasCt = false;
+            foreach ($headers as $k => $v) {
+                if (strtolower($k) === 'content-type') { $hasCt = true; break; }
+            }
+            if (!$hasCt) $headers['Content-Type'] = 'application/json';
+        }
         if ($this->csrf !== '' && !isset($headers['X-CSRF-Token'])) $headers['X-CSRF-Token'] = $this->csrf;
-        if ($this->origin !== null) $headers['Origin'] = $this->origin;
+        if ($this->origin !== null && !isset($headers['Origin'])) $headers['Origin'] = $this->origin;
         set_request([
             'method' => $method,
             'query' => ['r' => $route] + $query,

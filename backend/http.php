@@ -16,6 +16,7 @@ class HttpError extends Exception
 }
 
 const NZ_MAX_BODY = 16777216; // 16 MB
+const NZ_MAX_LOGIN_BODY = 65536; // 64 KB
 
 /** Throws; api.php turns it into {"error":{code,message}} with the given status. */
 function fail($status, $code, $message)
@@ -50,12 +51,14 @@ function request_from_globals()
     if (isset($_SERVER['CONTENT_TYPE'])) $headers['CONTENT-TYPE'] = $_SERVER['CONTENT_TYPE'];
     $body = '';
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+        $route = isset($_GET['r']) && is_string($_GET['r']) ? $_GET['r'] : '';
+        $maxBody = $route === 'login' ? NZ_MAX_LOGIN_BODY : NZ_MAX_BODY;
         $len = isset($_SERVER['CONTENT_LENGTH']) ? (int)$_SERVER['CONTENT_LENGTH'] : 0;
-        if ($len > NZ_MAX_BODY) {
+        if ($len > $maxBody) {
             set_request(['method' => 'POST']);
             fail(413, 'too_large', 'Die Anfrage ist zu groß.');
         }
-        $body = (string)file_get_contents('php://input', false, null, 0, NZ_MAX_BODY + 1);
+        $body = (string)file_get_contents('php://input', false, null, 0, $maxBody + 1);
     }
     return [
         'method' => $_SERVER['REQUEST_METHOD'],
@@ -72,7 +75,9 @@ function body()
 {
     $r = &$GLOBALS['NZ_REQ'];
     if ($r['_json'] !== null) return $r['_json'];
-    if (strlen($r['body']) > NZ_MAX_BODY) fail(413, 'too_large', 'Die Anfrage ist zu groß.');
+    $route = isset($r['query']['r']) && is_string($r['query']['r']) ? $r['query']['r'] : '';
+    $maxBody = ($r['method'] === 'POST' && $route === 'login') ? NZ_MAX_LOGIN_BODY : NZ_MAX_BODY;
+    if (strlen($r['body']) > $maxBody) fail(413, 'too_large', 'Die Anfrage ist zu groß.');
     if (trim($r['body']) === '') return $r['_json'] = [];
     $j = json_decode($r['body'], true);
     if (!is_array($j)) fail(400, 'bad_json', 'Ungültige Anfrage (JSON).');

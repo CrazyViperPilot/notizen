@@ -38,8 +38,6 @@ foreach (['auth', 'account', 'sync', 'tree', 'share', 'assets', 'admin'] as $m) 
 function route_ping()
 {
     return [
-        'php' => PHP_VERSION,
-        'mysql' => (string)val('SELECT VERSION()'),
         'schema' => (int)read_settings()['schema_version'],
     ];
 }
@@ -63,7 +61,10 @@ function dispatch()
         }
         ensure_schema();
 
-        if ($route['method'] === 'POST' && $name !== 'login') require_csrf();
+        if ($route['method'] === 'POST') {
+            require_same_origin();
+            if ($name !== 'login') require_csrf();
+        }
         $access = $route['access'];
         if ($access === 'none') $result = call_user_func($route['handler']);
         else {

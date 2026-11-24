@@ -46,6 +46,7 @@ export async function close() {
 /** Removes all local data of a user (logout with "delete data on this device"). */
 export async function wipe(userId) {
   if (user && user.id === userId) await close();
+  try { localStorage.removeItem(RECENT_KEY); } catch { /* private mode */ }
   await deleteDb(userId);
 }
 

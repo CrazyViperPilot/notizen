@@ -147,7 +147,7 @@ function showLogin(message = '') {
 
 async function logout() {
   try {
-    await api.post('logout');
+    await api.post('logout', { wipe: true });
   } catch (e) {
     if (!(e instanceof ApiError && e.status === 401)) { showErr(e); return; }
   }

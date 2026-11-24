@@ -317,16 +317,24 @@ function sync_apply(array $ch, array &$st)
     }
 
     $sameInk = $cols['strokes'] === $row['strokes'];
-    if ($clientWins && !$quotaOk) fail(507, 'quota', 'Speicherplatz voll.');
     if ($clientWins) {
+        $willCopy = !$sameInk && $row['deleted_at'] === null;
+        if ($willCopy) {
+            if ($st['used'] + $cols['bytes'] > $st['quota']) fail(507, 'quota', 'Speicherplatz voll.');
+        } elseif (!$quotaOk) {
+            fail(507, 'quota', 'Speicherplatz voll.');
+        }
         $cols = sync_check_parent($kind, $id, $cols, $st);
         $old = $row;
         $new = sync_store('page', $id, $cols, $st, $row);
-        if (!$sameInk && $old['deleted_at'] === null) sync_conflict_copy($new, row_cols('page', $old), $st);
+        if ($willCopy) sync_conflict_copy($new, row_cols('page', $old), $st);
         return ['id' => $id, 'status' => 'conflict', 'row' => sync_row_out('page', $new, false)];
     }
     // Server wins: keep the client's handwriting as a copy.
-    if (!$sameInk && $cols['deleted_at'] === null) sync_conflict_copy($row, $cols, $st);
+    if (!$sameInk && $cols['deleted_at'] === null) {
+        if ($st['used'] + $cols['bytes'] > $st['quota']) fail(507, 'quota', 'Speicherplatz voll.');
+        sync_conflict_copy($row, $cols, $st);
+    }
     return ['id' => $id, 'status' => 'conflict', 'row' => sync_row_out('page', sync_get('page', $id), true)];
 }
 
