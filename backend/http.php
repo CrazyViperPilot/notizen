@@ -37,7 +37,7 @@ function set_request(array $r)
     $r['headers'] = $h;
     $r['_json'] = null;
     $GLOBALS['NZ_REQ'] = $r;
-    $GLOBALS['NZ_RES'] = ['cookies' => []];
+    $GLOBALS['NZ_RES'] = ['cookies' => [], 'headers' => []];
     $GLOBALS['NZ_USER'] = false; // current_user() cache: false = not yet resolved
 }
 
@@ -104,6 +104,12 @@ function cookie_in($name)
 {
     $c = $GLOBALS['NZ_REQ']['cookies'];
     return isset($c[$name]) && is_string($c[$name]) ? $c[$name] : '';
+}
+
+/** Queue an extra response header (emitted by api.php, readable by tests in NZ_RES['headers']). */
+function add_header($line)
+{
+    $GLOBALS['NZ_RES']['headers'][] = $line;
 }
 
 /** Queue a cookie; $maxAge <= 0 deletes it. Emitted by api.php (or read by tests). */

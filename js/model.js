@@ -385,6 +385,48 @@ async function touchNote(noteId, force) {
   if (n && (force || Date.now() - n.updated_at > NOTE_TOUCH_MS)) await write('note', n);
 }
 
+// ───────────────────────── favorites & recently opened ─────────────────────────
+
+const RECENT_KEY = 'notizen:recent';
+const RECENT_MAX = 8;
+
+export async function setPinned(noteId, pinned) {
+  const n = await getNote(noteId);
+  if (n && !!n.pinned !== !!pinned) return write('note', { ...n, pinned: pinned ? 1 : 0 }, { touch: false });
+}
+
+/** Visible pinned notes, most recently changed first. */
+export async function listPinned() {
+  const map = await folderMap();
+  return (await need().all('notes'))
+    .filter((n) => n.pinned && !n.purged && !n.deleted_at && !folderGone(map, n.folder_id))
+    .sort((a, b) => b.updated_at - a.updated_at);
+}
+
+function readRecent() {
+  try {
+    const v = JSON.parse(localStorage.getItem(RECENT_KEY) || '[]');
+    return Array.isArray(v) ? v.filter((x) => x && typeof x.id === 'string') : [];
+  } catch { return []; }
+}
+
+/** Remembers that a note was opened on this device (called by the editor). */
+export function noteOpened(noteId) {
+  const list = [{ id: noteId, at: Date.now() }, ...readRecent().filter((x) => x.id !== noteId)].slice(0, RECENT_MAX);
+  try { localStorage.setItem(RECENT_KEY, JSON.stringify(list)); } catch { /* private mode */ }
+}
+
+/** Recently opened notes on this device that still exist (newest first). */
+export async function listRecent() {
+  const map = await folderMap();
+  const out = [];
+  for (const r of readRecent()) {
+    const n = await need().get('notes', r.id);
+    if (n && !n.purged && !n.deleted_at && !folderGone(map, n.folder_id)) out.push(n);
+  }
+  return out;
+}
+
 // ───────────────────────── trash & search ─────────────────────────
 
 /** Deleted items whose parents are not deleted (the "top" of each deleted subtree). */

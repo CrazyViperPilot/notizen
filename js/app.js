@@ -120,7 +120,7 @@ async function logout() {
     ],
   });
   if (!choice) return;
-  try { await api.post('logout'); } catch { /* offline: cookie stays, harmless */ }
+  try { await api.post('logout', { wipe: choice === 'wipe' }); } catch { /* offline: cookie stays, harmless */ }
   const id = user.id;
   if (unmount) { try { unmount(); } catch { /* ignore */ } unmount = null; }
   if (choice === 'wipe') await model.wipe(id); else await model.close();

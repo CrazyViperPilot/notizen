@@ -98,3 +98,7 @@
 .sel-bar .btn { min-height: 40px; font-size: 15px; }
 .sel-colors { display: flex; gap: 4px; flex-wrap: wrap; max-width: 260px; }
 .sel-colors .sw { width: 36px; height: 36px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 1px var(--line); cursor: pointer; }
+.nz-cover-row.known { background: rgba(30, 132, 73, .10); border-color: transparent; box-shadow: inset 3px 0 0 #1e8449; }
+.nz-cover-row.flash { animation: nz-flash 1.4s ease-out; outline: 3px solid #e67e22; outline-offset: -2px; }
+@keyframes nz-flash { 0% { outline-color: #e67e22; } 100% { outline-color: rgba(230, 126, 34, 0); } }
+.quiz-bar .quiz-count { color: var(--muted); padding: 0 6px; font-variant-numeric: tabular-nums; }

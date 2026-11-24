@@ -114,3 +114,19 @@ Verbindlich: ARCHITEKTUR Abschnitt 10. **Stand: P15–P22 erledigt (Nov 2026).**
 | P20 | Import `js/import/importer.js` + pdf.js (vendored) | Haiku |
 | P21 | Hintergrundbilder in PDF-Export, Vorschaubildern, Backup v2, geteilter Ansicht und Admin-Ansicht | Haiku |
 | P22 | Integration, E2E, Review, Push | Opus |
+
+---
+
+# Runde 3 (Nov 2026): Lineaturen, Vokabeltrainer, Favoriten, Formen, Datensicherung, Tests
+Verbindlich: ARCHITEKTUR Abschnitt 11. Push direkt nach `main` nach Gesamttest.
+
+| Paket | Inhalt | Wer |
+|---|---|---|
+| P23 | Backend: Migration 004 (Papiersorten, notes.pinned), Sync-Felder, `admin_export_user`, `admin_asset`, Tests | Haiku |
+| P24 | Lineaturen: config, paper.js (bands, strongLines), render.js, pdf.js, Tests | Haiku |
+| P25 | `js/ink/shapes.js` + Tests | Haiku |
+| P26 | Favoriten/Zuletzt in der Bibliothek | Haiku |
+| P27 | Backup-UI (Konto) + Gesamtsicherung (Admin) | Haiku |
+| P28 | Surface: Vokabeltrainer (gekonnt, Zähler, Zufall), Formen-Halten; Editor; model (pinned, recent) | Opus |
+| P29 | E2E-Suite im Repo + CI-Job | Haiku (Suite), Opus (CI) |
+| P30 | Sicherheits-Review, Gesamttest, Release | Opus |

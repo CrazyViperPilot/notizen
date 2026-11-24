@@ -56,6 +56,7 @@ function boundsOf(strokes) {
 }
 
 const HANDLE = 22;  // CSS px, scale handle radius (hit area)
+const e_isUp = (d) => d.ended === true;
 
 export function createSurface(container, opts = {}) {
   return new Surface(container, opts);
@@ -66,6 +67,8 @@ class Surface extends EventTarget {
     super();
     this.getImage = getImage;   // (assetId) → Promise<CanvasImageSource|null> for page backgrounds
     this.images = new Map();    // assetId → {img, loading}
+    this._recognize = null;     // shape recognizer (js/ink/shapes.js), loaded lazily
+    import('./shapes.js').then((m) => { this._recognize = m.recognizeShape; }, () => {});
     this.el = container;
     this.readOnly = readOnly;
     this.fingerDraw = fingerDraw;
@@ -148,7 +151,7 @@ class Surface extends EventTarget {
    * setQuiz({side: 'right'|'left'}) starts/changes it (all rows covered), setQuiz(null) ends it.
    */
   setQuiz(opts) {
-    this.quiz = opts ? { side: opts.side === 'left' ? 'left' : 'right', open: new Map() } : null;
+    this.quiz = opts ? { side: opts.side === 'left' ? 'left' : 'right', open: new Map(), asked: new Set(), flash: null } : null;
     this._refreshCovers();
   }
 
@@ -205,6 +208,47 @@ class Surface extends EventTarget {
     this._pageChanged(P, true);
     this._placeSelection();
     this._emitSelection();
+  }
+
+  /** Vocabulary progress over all vocab pages: rows with a word (filled) and rows ticked in the check column (known). */
+  quizStats() {
+    let known = 0, filled = 0;
+    for (const P of this.pages) {
+      if (P.paper !== 'vocab') continue;
+      const s = this._vocabRows(P);
+      for (let i = 0; i < s.filled.length; i++) if (s.filled[i]) { filled++; if (s.known[i]) known++; }
+    }
+    return { known, filled };
+  }
+
+  /**
+   * Random quiz: jumps to a random filled, not ticked row not asked in this round, covers and highlights it.
+   * Returns false when the round is complete (a new round starts with the next call).
+   */
+  quizNext() {
+    if (!this.quiz) return false;
+    const cand = [];
+    for (const P of this.pages) {
+      if (P.paper !== 'vocab') continue;
+      const s = this._vocabRows(P);
+      s.filled.forEach((f, i) => { if (f && !s.known[i] && !this.quiz.asked.has(P.id + ':' + i)) cand.push({ P, i }); });
+    }
+    if (!cand.length) { this.quiz.asked.clear(); return false; }
+    const { P, i } = cand[Math.floor(Math.random() * cand.length)];
+    this.quiz.asked.add(P.id + ':' + i);
+    const open = this.quiz.open.get(P.id);
+    if (open) open.delete(i);
+    const [y0] = vocabLayout(P.orient).rows[i];
+    this._stopInertia();
+    this.oy = (P.y + y0 * this.k) * this.z - this.H / 3;
+    this._clamp();
+    this.quiz.flash = P.id + ':' + i;
+    clearTimeout(this._flashTimer);
+    this._flashTimer = setTimeout(() => { if (this.quiz) { this.quiz.flash = null; this._removeCover(P); this._update(); } }, 1600);
+    this._removeCover(P);
+    this._invalidateDetail();
+    this._update();
+    return true;
   }
 
   hasVocab() {
@@ -585,9 +629,33 @@ class Surface extends EventTarget {
     st.height = r.h + 'px';
   }
 
+  /** Per row of a vocab page: does the word/translation area contain ink (filled), is the tick cell inked (known)? */
+  _vocabRows(P) {
+    if (P._vr && P._vr.strokes === P.strokes && P._vr.n === P.strokes.length && P._vr.ver === P._ver) return P._vr;
+    const L = vocabLayout(P.orient);
+    const n = L.rows.length;
+    const filled = new Array(n).fill(false), known = new Array(n).fill(false);
+    const tickX = L.right[1];
+    const top = n ? L.rows[0][0] : 0, step = n ? L.rows[0][1] - L.rows[0][0] : 1;
+    for (const s of P.strokes) {
+      const p = s.pts;
+      for (let k = 0; k < p.length; k += 3) {
+        const x = p[k], y = p[k + 1];
+        const i = Math.floor((y - top) / step); // rows are evenly spaced
+        if (i < 0 || i >= n) continue;
+        if (x >= tickX) known[i] = true;
+        else filled[i] = true;
+      }
+    }
+    P._vr = { strokes: P.strokes, n: P.strokes.length, ver: P._ver, filled, known };
+    return P._vr;
+  }
+
   _coverKey(P) {
     const open = this.quiz.open.get(P.id);
-    return this.quiz.side + P.orient + ':' + (open ? [...open].sort((a, b) => a - b).join(',') : '');
+    const s = this._vocabRows(P);
+    return this.quiz.side + P.orient + ':' + (open ? [...open].sort((a, b) => a - b).join(',') : '')
+      + '|' + s.filled.map((f, i) => (s.known[i] ? 'k' : f ? 'f' : '-')).join('') + '|' + (this.quiz.flash || '');
   }
 
   _buildCover(P) {
@@ -595,12 +663,15 @@ class Surface extends EventTarget {
     const L = vocabLayout(P.orient);
     const [x0, x1] = L[this.quiz.side];
     const open = this.quiz.open.get(P.id) || new Set();
+    const s = this._vocabRows(P);
     const box = document.createElement('div');
     box.className = 'nz-cover';
     box.style.cssText = 'position:absolute;left:0;top:0;transform-origin:0 0;';
     L.rows.forEach(([y0, y1], i) => {
+      if (!s.filled[i]) return; // empty rows need no cover
       const row = document.createElement('div');
-      row.className = 'nz-cover-row' + (open.has(i) ? ' open' : '');
+      row.className = 'nz-cover-row' + (s.known[i] ? ' known' : open.has(i) ? ' open' : '')
+        + (this.quiz.flash === P.id + ':' + i ? ' flash' : '');
       row.style.cssText = `position:absolute;left:${(x0 / P.w) * 100}%;width:${((x1 - x0) / P.w) * 100}%;`
         + `top:${(y0 / P.h) * 100}%;height:${((y1 - y0) / P.h) * 100}%;`;
       box.append(row);
@@ -630,7 +701,9 @@ class Surface extends EventTarget {
     const [x0, x1] = L[this.quiz.side];
     if (hit.ux < x0 || hit.ux > x1) return null;
     const row = L.rows.findIndex(([y0, y1]) => hit.uy >= y0 && hit.uy < y1);
-    return row < 0 ? null : { P: hit.P, row };
+    if (row < 0) return null;
+    const s = this._vocabRows(hit.P);
+    return s.filled[row] && !s.known[row] ? { P: hit.P, row } : null;
   }
 
   _toggleRow(q) {
@@ -749,6 +822,8 @@ class Surface extends EventTarget {
   // ───────────────────────── changes & history ─────────────────────────
 
   _pageChanged(P, rerender) {
+    P._ver = (P._ver || 0) + 1;
+    if (this.quiz && P.paper === 'vocab' && P.coverEl) { this._removeCover(P); this._update(); }
     if (rerender || !P.rendered) {
       P.rendered = false;
       if (P.canvas) this.renderQueue.add(P);
@@ -1013,6 +1088,7 @@ class Surface extends EventTarget {
       eraseMode: this.tool.mode === 'part' ? 'part' : 'stroke', before: kind === 'eraser' && this.tool.mode === 'part' ? P.strokes.map(snap) : null,
       smoother: new Smoother(), drawn: 0, lastScreen: pt,
       erased: [], lastU: null, splitChanged: false,
+      holdPt: null, holdTimer: 0, snapped: null, snapDrawn: false,
       stroke: kind === 'eraser' || kind === 'lasso' ? null : {
         id: strokeId(), type: kind === 'highlighter' ? 'h' : 'p',
         color: isHexColor(this.tool.color) ? this.tool.color.toLowerCase() : this.tool.color | 0, width: kind === 'highlighter' ? 0 : this.tool.width | 0, pts: null,
@@ -1038,6 +1114,25 @@ class Surface extends EventTarget {
     }
     d.smoother.push(hit.ux, hit.uy, p);
     d.lastRaw = { x: hit.ux, y: hit.uy, p };
+    this._holdCheck(d, pt);
+  }
+
+  // ───── hold still to straighten a shape (ARCHITEKTUR 11.4) ─────
+
+  _holdCheck(d, pt) {
+    if (!this._recognize || e_isUp(d)) return;
+    if (d.holdPt && Math.hypot(pt.x - d.holdPt.x, pt.y - d.holdPt.y) < 3) return; // still holding
+    d.holdPt = { x: pt.x, y: pt.y };
+    if (d.snapped) { d.snapped = null; d.drawn = 0; d.snapDrawn = false; this._clearLive(); } // moved on: freehand again
+    clearTimeout(d.holdTimer);
+    d.holdTimer = setTimeout(() => {
+      if (this.drawing !== d || d.snapped) return;
+      const res = this._recognize(Int32Array.from(d.smoother.out));
+      if (!res) return;
+      d.snapped = res;
+      d.snapDrawn = false;
+      this._schedule();
+    }, 500);
   }
 
   _eraseAt(ux, uy) {
@@ -1102,6 +1197,16 @@ class Surface extends EventTarget {
       ctx.stroke();
       return;
     }
+    if (d.snapped) {
+      if (d.snapDrawn) return;
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(0, 0, this.live.width, this.live.height);
+      this._liveTransform(ctx, d.P);
+      const shape = { ...d.stroke, pts: d.snapped.pts };
+      if (shape.type === 'h') drawHighlighter(ctx, shape); else drawPen(ctx, shape);
+      d.snapDrawn = true;
+      return;
+    }
     const out = d.smoother.out;
     const n = out.length / 3;
     if (!n) return;
@@ -1136,9 +1241,11 @@ class Surface extends EventTarget {
         if (d.splitChanged) this._pushHistory({ type: 'replace', pageId: d.P.id, before: d.before, after: d.P.strokes.map(snap) });
       } else if (d.erased.length) this._pushHistory({ type: 'erase', pageId: d.P.id, items: d.erased });
     } else {
-      if (d.lastRaw) d.smoother.finish(d.lastRaw.x, d.lastRaw.y, d.lastRaw.p);
+      clearTimeout(d.holdTimer);
+      d.ended = true;
+      if (d.lastRaw && !d.snapped) d.smoother.finish(d.lastRaw.x, d.lastRaw.y, d.lastRaw.p);
       const stroke = d.stroke;
-      stroke.pts = d.smoother.points();
+      stroke.pts = d.snapped ? Int32Array.from(d.snapped.pts) : d.smoother.points();
       this._clearLive();
       if (stroke.pts.length >= 3) {
         d.P.strokes.push(stroke);
@@ -1151,6 +1258,7 @@ class Surface extends EventTarget {
   }
 
   _abortDraw() {
+    if (this.drawing) clearTimeout(this.drawing.holdTimer);
     this.drawing = null;
     this._clearLive();
   }

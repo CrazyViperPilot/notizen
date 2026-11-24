@@ -171,6 +171,8 @@ function route_logout($u)
 {
     q('DELETE FROM {sessions} WHERE id_hash = ?', [$u['_sid']]);
     set_cookie(NZ_COOKIE, '', 0);
+    // "Abmelden und Daten löschen": also drop the browser's HTTP cache of this site (cached page images).
+    if (field('wipe') === true) add_header('Clear-Site-Data: "cache"');
     return [];
 }
 

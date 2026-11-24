@@ -455,3 +455,53 @@ Beim Start ruft die App `navigator.storage.persist()` auf.
 - `js/ui/pages.js`: `openPageOverview({model, noteId, currentPageId, getImage, onJump}) → Promise<void>` – Vollbild-Raster aller Seiten
   als Miniaturen (mit Papier, Hintergrundbild, Strichen), Antippen springt zur Seite, Umsortieren per Ziehen (langes Drücken) und alternativ
   Knöpfe ◀ ▶, Menü pro Seite: Duplizieren, Löschen (letzte Seite nicht). Nutzt `model.movePage/duplicatePage/deletePage`.
+
+## 11. Runde 3: Schul-Lineaturen, Vokabeltrainer, Favoriten, Formen, Datensicherung (verbindlich für P23–P30)
+
+### 11.1 Schul-Lineaturen (neue Papiersorten)
+`PAPERS` += `'lin1'`, `'lin2'`, `'lin3'`, `'lin4'`, `'math'`. Namen: Lineatur 1 … Lineatur 4, „Rechenkästchen mit Rand“.
+Angelehnt an deutsche Schulhefte; alle Maße in `config.js` (`LINEATUR`), damit sie an echte Hefte angepasst werden können.
+- Lineatur 1–3: wiederholte **Schreibzeilen** aus 4 Linien (Oberlinie, Mittellinie, Grundlinie, Unterlinie), dazwischen ein Zwischenraum.
+  Bänder (0,1 mm): `lin1` je 50 (Ober-, Mittel-, Unterband), Abstand 40, Mittelband hellgrün getönt; `lin2` je 40, Abstand 35, getönt;
+  `lin3` je 30, Abstand 30, nicht getönt. Erste Zeile ab y = 250, Rand links wie liniert (x = 250, Randfarbe).
+- Lineatur 4: einfache Linien im Abstand 90 (9 mm) ab y = 250, Rand links.
+- `math`: Karo 50 wie „Kariert“, dazu rote Randlinien links bei x = 150 und rechts bei w − 150.
+- `paperGeometry` liefert zusätzlich `bands: Float32Array [x, y, w, h, …]` (getönte Flächen, Farbe `PAPER_STYLE.bandColor = '#e6f4e1'`);
+  Canvas (`drawPaper`) und PDF füllen sie vor den Linien. Die Grundlinie jeder Schreibzeile ist etwas kräftiger: Linien, die in
+  `strongLines` (Float32Array wie `lines`) stehen, werden mit 1,6-facher Breite gezeichnet.
+- Server: `pages.paper` ENUM um die fünf Werte erweitern (Migration 004), `sync.php` Prüfliste ebenso.
+
+### 11.2 Vokabeltrainer (Erweiterung der Abfrage)
+- Eine Zeile gilt als **gekonnt**, wenn in ihrer Abhak-Zelle (x ∈ [w − vocabCheck, w], y ∈ Zeile) Tinte ist; als **belegt**, wenn in der
+  Wort-Spalte (links) Tinte ist. Gekonnte Zeilen bleiben beim Abfragen unbedeckt (grün markiert) und werden übersprungen.
+- Abfrageleiste zeigt „gekonnt: 18 von 30“ (belegte Zeilen aller Vokabel-Seiten der Notiz).
+- **Zufällig**: Knopf „Nächste“ springt zu einer zufälligen belegten, nicht gekonnten, in dieser Runde noch nicht gefragten Zeile,
+  scrollt dorthin und hebt sie kurz hervor; alle gefragt → Hinweis „Runde fertig“ und neue Runde.
+- Surface-API: `quizStats() → {known, filled}`, `quizNext() → bool` (false = Runde fertig). Event `quiz` wie bisher.
+
+### 11.3 Favoriten und „Zuletzt geöffnet“
+- `notes.pinned` TINYINT (Migration 004), normales Sync-Feld. `model.setPinned(noteId, bool)`, `model.listPinned() → Note[]`.
+- „Zuletzt geöffnet“ nur auf dem Gerät: `localStorage['notizen:recent']` = `[{id, at}]` (max. 8, neueste zuerst); der Editor trägt beim Öffnen ein.
+  `model.listRecent() → Note[]` (nur vorhandene, nicht gelöschte).
+- Bibliothek: auf der obersten Ebene ohne Suche oben zwei Reihen „Favoriten“ und „Zuletzt geöffnet“ (horizontal scrollbar, Kacheln wie
+  sonst). Kachelmenü „Zu Favoriten“ / „Aus Favoriten entfernen“; Favoriten-Kacheln mit kleinem ★.
+
+### 11.4 Formen geraderücken
+- `js/ink/shapes.js`: `recognizeShape(pts: Int32Array) → null | {kind: 'line'|'circle'|'ellipse'|'rect', pts: Int32Array}` (rein, testbar).
+  Ergebnispunkte dicht (Abstand ≤ 20 Einheiten), Druck = Mittelwert des Originals, geschlossene Formen enden am Startpunkt.
+- Surface: Bleibt der Stift beim Zeichnen ≥ 500 ms ruhig (Bewegung < 3 CSS-px) und erkennt `recognizeShape` eine Form, wird der laufende
+  Strich sofort durch die Form ersetzt (Live-Ebene neu gezeichnet); beim Abheben wird die Form gespeichert. Nur Stift und Textmarker.
+
+### 11.5 Datensicherung
+- App (Konto-Seite): „Backup herunterladen“ (`backup.exportAll` → Datei `notizen-backup-JJJJ-MM-TT.notizen`) und „Backup einspielen“
+  (`backup.importBackup`, landet im Ordner „Import <Datum>“).
+- Admin: Routen `admin_export_user` GET `user` → `{user, folders, notes, pages (mit strokes), assets: [{id, mime, w, h, bytes}]}`
+  (alles nicht endgültig gelöschte) und `admin_asset` GET `user`, `id` → Binär (wie asset_get). Beide Admin-only, Protokoll `backup`.
+- Admin-Bereich: Knopf „Gesamtsicherung herunterladen“ → Datei `notizen-sicherung-JJJJ-MM-TT.json.gz` (gzip, wenn verfügbar):
+  `{format: 'notizen-admin-backup', version: 1, exported_at, users: [{user, backup: {format: 'notizen-backup', version: 2, folders, notes,
+  pages, assets: [{id, mime, w, h, data: base64}]}}]}`. Jedes `backup`-Objekt ist für sich in der App einspielbar (Hinweis im Admin-Bereich).
+
+### 11.6 Tests im Repo und CI
+- `test/e2e/*.e2e.mjs` (node:test + playwright): Login, Ordner/Notiz, Pencil-Striche + Neuladen, Offline + Sync zwischen zwei Kontexten,
+  Lasso, Vokabel-Abfrage, Foto-Import, Teilen, Admin. Gestartet mit `npm run test:e2e` gegen `E2E_BASE` (Standard http://127.0.0.1:8080/).
+- `test.yml`: zusätzlicher Job mit MySQL-Service, `php -S`, Playwright-Chromium, `npm run test:e2e`.

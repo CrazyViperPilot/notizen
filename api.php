@@ -25,6 +25,7 @@ try {
     $payload = ['error' => ['code' => $e->errCode, 'message' => $e->getMessage()]];
 }
 
+foreach ($GLOBALS['NZ_RES']['headers'] as $line) header($line);
 foreach ($GLOBALS['NZ_RES']['cookies'] as $c) {
     setcookie($c['name'], $c['value'], [
         'expires' => $c['max_age'] > 0 ? time() + $c['max_age'] : 1,

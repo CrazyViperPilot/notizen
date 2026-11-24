@@ -69,8 +69,11 @@ export async function mountEditor(el, { noteId }, ctx) {
   // Vocabulary quiz: covers one column of the vocab pages, tapping a row reveals it.
   let quizSide = null;
   const quizSwap = h('button', { type: 'button', className: 'btn', onclick: () => startQuiz(quizSide === 'right' ? 'left' : 'right') });
+  const quizCount = h('span', { className: 'quiz-count', 'aria-live': 'polite' });
   const quizBar = h('div', { className: 'quiz-bar', role: 'toolbar', 'aria-label': 'Abfragen', hidden: true },
     h('span', { className: 'quiz-title', text: 'Abfragen' }),
+    quizCount,
+    h('button', { type: 'button', className: 'btn primary', text: 'Nächste', title: 'Zufällige Vokabel abfragen', onclick: () => quizNext() }),
     quizSwap,
     h('button', { type: 'button', className: 'btn', text: 'Alle aufdecken', onclick: () => surface.quizAll(true) }),
     h('button', { type: 'button', className: 'btn', text: 'Alle zudecken', onclick: () => surface.quizAll(false) }),
@@ -124,9 +127,23 @@ export async function mountEditor(el, { noteId }, ctx) {
     surface.selectionAction('delete');
   }
 
+  function updateQuizCount() {
+    if (!quizSide) return;
+    const s = surface.quizStats();
+    quizCount.textContent = s.filled ? `gekonnt: ${s.known} von ${s.filled}` : 'noch keine Vokabeln';
+  }
+
+  function quizNext() {
+    if (!surface.quizNext()) {
+      toast('Runde fertig – alle offenen Vokabeln wurden gefragt.', { type: 'ok' });
+      surface.quizNext(); // starts the next round right away
+    }
+  }
+
   function startQuiz(side) {
     quizSide = side;
     surface.setQuiz({ side });
+    updateQuizCount();
     quizSwap.textContent = side === 'right' ? 'Wörter abdecken' : 'Übersetzung abdecken';
     quizBar.hidden = false;
     toolbar.setQuiz(true, true);
@@ -143,6 +160,7 @@ export async function mountEditor(el, { noteId }, ctx) {
   surface.addEventListener('selection', (e) => renderSelBar(e.detail));
   document.addEventListener('keydown', onSelKey);
   toolbar.setTitle(note.title);
+  model.noteOpened(noteId);
   surface.setTool(toolbar.getTool());
 
   // ───── state ─────
@@ -164,6 +182,7 @@ export async function mountEditor(el, { noteId }, ctx) {
   });
 
   surface.addEventListener('pagechange', () => refreshPageInfo());
+  surface.addEventListener('strokes', () => updateQuizCount()); // ticks while quizzing update the counter
   surface.addEventListener('history', (e) => toolbar.setHistory(e.detail.canUndo, e.detail.canRedo));
 
   function track(promise) {
