@@ -22,6 +22,8 @@ export const HL_COLORS = ['#ffe600', '#7dff6b', '#ff7ad9'];
 export const HL_COLOR_NAMES = ['Gelb', 'Grün', 'Pink'];
 export const HL_WIDTH = 50;
 export const HL_ALPHA = 0.35;
+/** Bleistift (Schraffur): Deckkraft eines Strichs; übereinander gemalt wird es dunkler. */
+export const PENCIL_ALPHA = 0.45;
 
 export const PAPER_STYLE = {
   lineColor: '#b8c7dd',

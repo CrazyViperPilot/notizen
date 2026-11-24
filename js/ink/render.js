@@ -1,7 +1,7 @@
 // Canvas drawing. All functions expect ctx's transform to map page units (0.1 mm) to device pixels;
 // `scale` = device pixels per page unit (used for minimum line widths).
 
-import { PAGE, HL_WIDTH, HL_ALPHA, PAPER_STYLE, penColor, hlColor } from '../config.js';
+import { PAGE, HL_WIDTH, HL_ALPHA, PENCIL_ALPHA, PAPER_STYLE, penColor, hlColor } from '../config.js';
 import { paperGeometry } from './paper.js';
 import { penShapes, bbox } from './stroke.js';
 
@@ -116,6 +116,19 @@ export function drawPen(ctx, stroke, from = 0) {
   ctx.fill('nonzero');
 }
 
+/** Bleistift: gleiche Form wie der Stift, halbtransparent (eine Füllung pro Strich → gleichmäßig, Überlagerung dunkler). */
+export function drawPencil(ctx, stroke) {
+  ctx.save();
+  ctx.globalAlpha = PENCIL_ALPHA;
+  drawPen(ctx, stroke);
+  ctx.restore();
+}
+
+/** Stift oder Bleistift (alles außer Textmarker). */
+export function drawInk(ctx, stroke) {
+  if (stroke.type === 'b') drawPencil(ctx, stroke); else drawPen(ctx, stroke);
+}
+
 export function drawHighlighter(ctx, stroke) {
   const p = stroke.pts;
   ctx.save();
@@ -135,7 +148,7 @@ export function drawHighlighter(ctx, stroke) {
 
 export function drawStroke(ctx, stroke) {
   if (stroke.type === 'h') drawHighlighter(ctx, stroke);
-  else drawPen(ctx, stroke);
+  else drawInk(ctx, stroke);
 }
 
 function visible(stroke, clip) {
@@ -144,9 +157,9 @@ function visible(stroke, clip) {
   return !(b[2] < clip[0] || b[0] > clip[2] || b[3] < clip[1] || b[1] > clip[3]);
 }
 
-/** Paper, then all highlighters, then all pens. `clip` = [x0, y0, x1, y1] in page units to skip invisible strokes. */
+/** Paper, then all highlighters, then pens and pencils in drawing order. `clip` = [x0, y0, x1, y1] in page units to skip invisible strokes. */
 export function drawPage(ctx, page, strokes, scale, clip = null, img = null) {
   drawPaper(ctx, page, scale, clip, img);
   for (const s of strokes) if (s.type === 'h' && visible(s, clip)) drawHighlighter(ctx, s);
-  for (const s of strokes) if (s.type !== 'h' && visible(s, clip)) drawPen(ctx, s);
+  for (const s of strokes) if (s.type !== 'h' && visible(s, clip)) drawInk(ctx, s);
 }

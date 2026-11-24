@@ -189,8 +189,9 @@ export async function mountEditor(el, { noteId }, ctx) {
   surface.addEventListener('gesture', (e) => toast(e.detail.action === 'undo' ? '↶ Rückgängig' : '↷ Wiederholen', { ms: 900 }));
   surface.addEventListener('pickcolor', (e) => {
     const cur = toolbar.getTool();
-    const kind = e.detail.type === 'h' ? 'highlighter' : 'pen';
-    toolbar.setTool({ kind, color: e.detail.color, width: kind === 'pen' ? (cur.kind === 'pen' ? cur.width : 1) : 0 });
+    const kind = e.detail.type === 'h' ? 'highlighter' : e.detail.type === 'b' ? 'pencil' : 'pen';
+    const ink = kind === 'pen' || kind === 'pencil';   // Stift und Bleistift: Breite behalten, wenn dieses Werkzeug schon aktiv war
+    toolbar.setTool({ kind, color: e.detail.color, width: ink ? (cur.kind === kind ? cur.width : 1) : 0 });
     surface.setTool(toolbar.getTool());
     toast('Farbe übernommen', { ms: 1200 });
   });

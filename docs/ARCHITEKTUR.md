@@ -118,12 +118,12 @@ JSON-Array von Strichen. Der Server prüft nur: gültiges JSON-Array, höchstens
 ```json
 [{"i":"k3x9a1","t":"p","c":0,"w":1,"p":[x0,y0,p0, dx1,dy1,dp1, dx2,dy2,dp2, …]}]
 ```
-- `i`: Strich-ID (8 zufällige Zeichen, eindeutig pro Seite), `t`: `"p"` Stift | `"h"` Textmarker,
+- `i`: Strich-ID (8 zufällige Zeichen, eindeutig pro Seite), `t`: `"p"` Stift | `"h"` Textmarker | `"b"` Bleistift (Abschnitt 12),
   `c`: Farbindex (in `PEN_COLORS` bzw. `HL_COLORS`) **oder** eigene Farbe als `"#rrggbb"` (Helfer `penColor()`/`hlColor()` in `config.js`), `w`: Stärkenindex 0–2 (bei `"h"` immer 0).
 - `p`: Punkte, **delta-kodiert** als Ganzzahlen. Erster Punkt absolut, danach Differenzen. `x`,`y` in 0,1 mm,
   Druck `p` 0–255 (Maus/Finger: 128). Punkte sind bereits geglättet und entdoppelt gespeichert.
 - `codec.js` exportiert `encodeStrokes(strokes) → string` und `decodeStrokes(string) → Stroke[]`, wobei
-  `Stroke = {id, type:'p'|'h', color, width, pts: Int32Array /* x,y,p,x,y,p… absolut */}`.
+  `Stroke = {id, type:'p'|'h'|'b', color, width, pts: Int32Array /* x,y,p,x,y,p… absolut */}`.
 
 ### 3.4 IndexedDB (`notizen-u<userId>`, Version 1)
 | Store | Schlüssel | Indizes | Inhalt |
@@ -344,7 +344,7 @@ Textmarker = Mittellinie `pts` mit fester Breite `HL_WIDTH`.
 **`js/ink/surface.js`**
 ```js
 createSurface(container, { readOnly = false, fingerDraw = false }) → Surface
-Surface: setPages(pages /* Page[] inkl. strokes-String */, {keepView}) · updatePage(page) · flush() · zoom() · setTool({kind: 'pen'|'highlighter'|'eraser', color, width})
+Surface: setPages(pages /* Page[] inkl. strokes-String */, {keepView}) · updatePage(page) · flush() · zoom() · setTool({kind: 'pen'|'pencil'|'highlighter'|'eraser'|'lasso', color, width})
          undo() · redo() · canUndo() · canRedo() · scrollToPage(id) · currentPageId() · setFingerDraw(bool) · destroy()
          setQuiz({side: 'right'|'left'} | null) · quizAll(reveal) · hasVocab()   (Vokabel-Abfrage, Abdeckungen als DOM-Ebene über dem Detail-Canvas)
 Ereignisse (EventTarget): 'strokes' {pageId, strokes /* String */} · 'pagechange' {pageId} · 'history' {canUndo, canRedo}
@@ -518,3 +518,21 @@ Angelehnt an deutsche Schulhefte; alle Maße in `config.js` (`LINEATUR`), damit 
 - **Ganze Seite:** Schnelles Zusammenziehen (< 350 ms, Zoom sinkt um > 20 %) bei Zoom > 1 springt auf Zoom 1 (Seitenbreite).
 - **Glättung:** `localStorage['notizen:prefs'].smoothing` = 'direct' | 'normal' | 'strong' (Konto-Seite) → `Smoother(k)` mit
   k = 0,85 / 0,55 / 0,3 (`SMOOTHING` in stroke.js); Surface-Option `smoothing`, `setSmoothing()`.
+
+## 12. Bleistift (Schraffieren)
+
+Werkzeug `'pencil'` (Name „Bleistift“, Taste **b**). Strich-Typ `"b"` im Format aus 3.3.
+- **Farben und Stärken** wie der Stift (Stift-Palette, „Eigene Farbe“, 3 Stärken). Standard: Schwarz, Stärke „Mittel“.
+  Einstellungen in `localStorage['notizen:prefs'].tool.pencil` (ältere Daten ohne `pencil` gelten als Standard).
+- **Punktwert:** Der dritte Wert jedes Punkts ist beim Bleistift der **Radius × 4** (`PENCIL_P_SCALE` in `stroke.js`), also höchstens
+  ca. 6,4 mm. `radiusAt(stroke, p)` liefert ihn; `penShapes`, `maxRadius`, `bbox` und der Teil-Radierer rechnen damit. Beim Stift bleibt es bei `penRadius`.
+- **Breite aus Druck und Neigung:** `altitudeOf(e)` nimmt `altitudeAngle`, sonst den Höhenwinkel aus `tiltX`/`tiltY`; Finger und Maus gelten als senkrecht (π/2).
+  `pencilP(width, pressure, altitude)` liefert einen Wert 0–1, den der Smoother wie einen Druck speichert. Senkrecht gehalten liegt der
+  Radius ungefähr beim Stift (gleiche Grundbreite, eigene Druckkurve); ab 50° Höhenwinkel wächst er bis 15° auf das 12-Fache. Mehr Druck macht den Strich zusätzlich breiter.
+- **Darstellung:** `drawPencil` (Canvas) und die Live-Ebene mit Deckkraft `PENCIL_ALPHA` (`config.js`, 0,45). Übereinander gemalte Striche werden dunkler.
+  Die Reihenfolge bleibt: Papier, Textmarker, dann Stifte und Bleistifte in Zeichenreihenfolge.
+- **PDF:** Bleistift-Striche wie Stift-Striche gefüllt, mit ExtGState `/GS2` (`/CA` und `/ca` 0,45, `/BM /Normal`). Danach wechselt der Inhalt
+  für deckende Stifte wieder auf `/GS0`.
+- **Pipette:** `pickcolor` mit `type 'b'` stellt das Werkzeug Bleistift ein. Lasso-Farbwahl färbt Stift und Bleistift (`'p'`).
+- **Glättung und Gesten** wie beim Stift (Abschnitt 11.7). Hinweis: Die Formen-Erkennung (11.4) greift beim Bleistift derzeit ebenfalls,
+  obwohl 11.4 nur Stift und Textmarker nennt. Offene Entscheidung.

@@ -12,8 +12,9 @@
 
 import { isHexColor, PAGE, PAGE_GAP, PAGE_PAD, ZOOM_MIN, ZOOM_MAX, ERASER_RADIUS, UNDO_LIMIT, SAVE_DELAY } from '../config.js';
 import { decodeStrokes, encodeStrokes, strokeId } from './codec.js';
-import { Smoother, SMOOTHING, normPressure, hitTest, hitTestSegment, bbox, eraseSplit } from './stroke.js';
-import { drawPage, drawPen, drawHighlighter, setPageTransform } from './render.js';
+import { Smoother, SMOOTHING, normPressure, pencilP, altitudeOf, hitTest, hitTestSegment, bbox, eraseSplit } from './stroke.js';
+import { drawPage, drawPen, drawInk, drawHighlighter, setPageTransform } from './render.js';
+import { PENCIL_ALPHA } from '../config.js';
 import { vocabLayout } from './paper.js';
 
 const MAX_PAGE_CSS = 1100;      // max page width at zoom 1 (desktop)
@@ -205,7 +206,7 @@ class Surface extends EventTarget {
       this.sel = { P, strokes: copies };
     } else if (action === 'color') {
       let n = 0;
-      for (const x of s.strokes) if (x.type === type) { x.color = value; n++; }
+      for (const x of s.strokes) if (type === 'h' ? x.type === 'h' : x.type !== 'h') { x.color = value; n++; } // 'p' = Stift und Bleistift
       if (!n) return;
     } else return;
     this._pushHistory({ type: 'replace', pageId: P.id, before, after: P.strokes.map(snap) });
@@ -839,7 +840,7 @@ class Surface extends EventTarget {
     if (P.canvas && P.rendered) {
       const ctx = P.canvas.getContext('2d');
       setPageTransform(ctx, P.scale);
-      drawPen(ctx, stroke);
+      drawInk(ctx, stroke);
     }
     const d = this.detailState;
     if (d && this.detail.style.display !== 'none') {
@@ -847,7 +848,7 @@ class Surface extends EventTarget {
       const s = this.dpr * d.z * this.k;
       ctx.save();
       setPageTransform(ctx, s, (P.x * d.z - d.ox) * this.dpr, (P.y * d.z - d.oy) * this.dpr);
-      drawPen(ctx, stroke);
+      drawInk(ctx, stroke);
       ctx.restore();
     }
   }
@@ -1223,10 +1224,12 @@ class Surface extends EventTarget {
       erased: [], lastU: null, splitChanged: false,
       holdPt: null, holdTimer: 0, snapped: null, snapDrawn: false,
       stroke: kind === 'eraser' || kind === 'lasso' ? null : {
-        id: strokeId(), type: kind === 'highlighter' ? 'h' : 'p',
+        id: strokeId(), type: kind === 'highlighter' ? 'h' : kind === 'pencil' ? 'b' : 'p',
         color: isHexColor(this.tool.color) ? this.tool.color.toLowerCase() : this.tool.color | 0, width: kind === 'highlighter' ? 0 : this.tool.width | 0, pts: null,
       },
     };
+    // Bleistift: live deckend zeichnen (schrittweise, schnell), die Live-Ebene als Ganzes halbtransparent anzeigen
+    this.live.style.opacity = kind === 'pencil' ? String(PENCIL_ALPHA) : '';
     this._addSample(e);
     this._schedule();
   }
@@ -1245,15 +1248,16 @@ class Surface extends EventTarget {
       this._lassoSample(hit.ux, hit.uy);
       return;
     }
-    d.smoother.push(hit.ux, hit.uy, p);
-    d.lastRaw = { x: hit.ux, y: hit.uy, p };
+    const pv = d.stroke.type === 'b' ? pencilP(d.stroke.width, p, altitudeOf(e)) : p;
+    d.smoother.push(hit.ux, hit.uy, pv);
+    d.lastRaw = { x: hit.ux, y: hit.uy, p: pv };
     this._holdCheck(d, pt);
   }
 
   // ───── hold still to straighten a shape (ARCHITEKTUR 11.4) ─────
 
   _holdCheck(d, pt) {
-    if (!this._recognize || e_isUp(d)) return;
+    if (!this._recognize || e_isUp(d) || d.stroke.type === 'b') return; // Bleistift: Schraffieren ohne Formerkennung
     if (d.holdPt && Math.hypot(pt.x - d.holdPt.x, pt.y - d.holdPt.y) < 3) return; // still holding
     d.holdPt = { x: pt.x, y: pt.y };
     if (d.snapped) { d.snapped = null; d.drawn = 0; d.snapDrawn = false; this._clearLive(); } // moved on: freehand again

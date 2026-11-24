@@ -123,7 +123,7 @@ export async function mountAccount(el, params, ctx) {
         h('p', { className: 'muted acc-hint', text: 'Für Geräte ohne Apple Pencil. Dann scrollst du mit zwei Fingern.' }),
         h('div', { className: 'acc-row' }, h('span', { text: 'Glättung der Schrift' }), h('div', { className: 'acc-seg', role: 'group', 'aria-label': 'Glättung' }, smoothBtns)),
         h('p', { className: 'muted acc-hint', text: '„Direkt“ folgt dem Stift ganz genau, „Stark“ macht zittrige Linien ruhiger. Gilt beim nächsten Öffnen einer Notiz.' }),
-        h('p', { className: 'muted acc-hint', text: 'Gesten: mit zwei Fingern tippen = Rückgängig, mit drei Fingern = Wiederholen, lange mit dem Finger auf einen Strich drücken = dessen Farbe übernehmen, schnell mit zwei Fingern zusammenziehen = ganze Seite.' })),
+        h('p', { className: 'muted acc-hint', text: 'Gesten: mit zwei Fingern tippen = Rückgängig, mit drei Fingern = Wiederholen, lange mit dem Finger auf einen Strich drücken = dessen Farbe übernehmen, schnell mit zwei Fingern zusammenziehen = ganze Seite. Bleistift: Apple Pencil schräg halten = breiter, weicher Strich zum Schraffieren.' })),
       user.role === 'admin'
         ? h('a', { className: 'btn acc-admin', href: 'admin.html', text: 'Admin-Bereich öffnen' })
         : null));

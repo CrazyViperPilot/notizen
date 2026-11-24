@@ -1,6 +1,7 @@
 // Editor toolbar (PRD 6.1–6.2, ARCHITEKTUR 7.1). Tool, color and width are remembered per tool in
 // localStorage 'notizen:prefs' (key `tool`). Keyboard shortcuts only work while no input has focus.
 // Everything user-provided goes through textContent / attributes (no innerHTML).
+// Bleistift (kind 'pencil') hat wie der Stift Farben und 3 Stärken; seine Striche werden als Typ 'b' gespeichert.
 
 import { PEN_COLORS, PEN_COLOR_NAMES, PEN_WIDTHS, HL_COLORS, HL_COLOR_NAMES, PAPERS, PAPER_NAMES, isHexColor, DEFAULT_CUSTOM_COLOR, DEFAULT_CUSTOM_HL_COLOR } from '../config.js';
 import { h, menu, promptText } from './dom.js';
@@ -8,12 +9,14 @@ import { fullscreenSupported, isFullscreen, toggleFullscreen, onFullscreenChange
 
 const PREFS_KEY = 'notizen:prefs';
 const SVG_NS = 'http://www.w3.org/2000/svg';
-const KINDS = ['pen', 'highlighter', 'eraser', 'lasso'];
-const KIND_NAMES = { pen: 'Stift', highlighter: 'Textmarker', eraser: 'Radierer', lasso: 'Lasso (auswählen)' };
+const KINDS = ['pen', 'pencil', 'highlighter', 'eraser', 'lasso'];
+const KIND_NAMES = { pen: 'Stift', pencil: 'Bleistift', highlighter: 'Textmarker', eraser: 'Radierer', lasso: 'Lasso (auswählen)' };
+const COLOR_KINDS = ['pen', 'pencil', 'highlighter'];  // Werkzeuge mit Farbwahl
 const WIDTH_DOTS = [7, 11, 17];   // dot diameter in px for PEN_WIDTHS (fein, mittel, dick)
 
 const ICONS = {
   pen: [{ d: 'M4 20l1.1-4.4L15.6 5a2 2 0 0 1 2.8 0l.6.6a2 2 0 0 1 0 2.8L8.4 19z' }, { d: 'M13.8 6.8l3.4 3.4' }],
+  pencil: [{ d: 'M14.6 5.4l4 4L9.6 18.4 5.6 19.4l1-4z' }, { d: 'M4 21.2h7' }],
   highlighter: [{ d: 'M5 21h14', w: 5, o: 0.45 }, { d: 'M8 15l6.8-8.6 3.2 2.5L11.2 17.5z' }],
   eraser: [{ d: 'M4.5 16.5L12 9l5 5-5.5 5.5H8.5z' }, { d: 'M11 19.5h9' }],
   lasso: [{ d: 'M12 4c4.4 0 8 2.2 8 5s-3.6 5-8 5-8-2.2-8-5 3.6-5 8-5z', dash: true }, { d: 'M7 13c-1 2 0 4 2 4.5s2.5 2 1.5 3.5' }],
@@ -76,6 +79,12 @@ export function createToolbar({ onTool, onUndo, onRedo, onBack, onTitle, onPageM
       width: idx(saved.pen && saved.pen.width, PEN_WIDTHS.length),
       custom: customOf(saved.pen, DEFAULT_CUSTOM_COLOR),
     },
+    // Bleistift: Standard Schwarz, Stärke „Mittel“. Ältere gespeicherte Einstellungen ohne pencil bekommen die Standards.
+    pencil: {
+      color: penColorOf(saved.pencil && saved.pencil.color),
+      width: Number.isInteger(saved.pencil && saved.pencil.width) ? idx(saved.pencil.width, PEN_WIDTHS.length) : 1,
+      custom: customOf(saved.pencil, DEFAULT_CUSTOM_COLOR),
+    },
     highlighter: {
       color: hlColorOf(saved.highlighter && saved.highlighter.color),
       custom: customOf(saved.highlighter, DEFAULT_CUSTOM_HL_COLOR),
@@ -87,6 +96,7 @@ export function createToolbar({ onTool, onUndo, onRedo, onBack, onTitle, onPageM
 
   const current = () => {
     if (kind === 'pen') return { kind, color: mem.pen.color, width: mem.pen.width };
+    if (kind === 'pencil') return { kind, color: mem.pencil.color, width: mem.pencil.width };
     if (kind === 'highlighter') return { kind, color: mem.highlighter.color, width: 0 };
     if (kind === 'lasso') return { kind, color: 0, width: 0 };
     return { kind: 'eraser', color: 0, width: 0, mode: mem.eraser.mode };
@@ -94,7 +104,7 @@ export function createToolbar({ onTool, onUndo, onRedo, onBack, onTitle, onPageM
 
   const persist = () => {
     const p = readPrefs();
-    p.tool = { kind, pen: { ...mem.pen }, highlighter: { ...mem.highlighter }, eraser: { ...mem.eraser } };
+    p.tool = { kind, pen: { ...mem.pen }, pencil: { ...mem.pencil }, highlighter: { ...mem.highlighter }, eraser: { ...mem.eraser } };
     writePrefs(p);
   };
 
@@ -108,13 +118,14 @@ export function createToolbar({ onTool, onUndo, onRedo, onBack, onTitle, onPageM
 
   const setColor = (i) => {
     if (kind === 'pen') mem.pen.color = i;
+    else if (kind === 'pencil') mem.pencil.color = i;
     else if (kind === 'highlighter') mem.highlighter.color = i;
     emit();
   };
 
   const setWidth = (i) => {
-    if (kind !== 'pen') return;
-    mem.pen.width = i;
+    if (kind !== 'pen' && kind !== 'pencil') return;
+    mem[kind].width = i;
     emit();
   };
 
@@ -192,10 +203,10 @@ export function createToolbar({ onTool, onUndo, onRedo, onBack, onTitle, onPageM
       }
       return;
     }
-    const isPen = kind === 'pen';
-    const colors = isPen ? PEN_COLORS : HL_COLORS;
-    const names = isPen ? PEN_COLOR_NAMES : HL_COLOR_NAMES;
-    const cur = isPen ? mem.pen.color : mem.highlighter.color;
+    const isInk = kind === 'pen' || kind === 'pencil';   // Stift und Bleistift: Stift-Palette und 3 Stärken
+    const colors = isInk ? PEN_COLORS : HL_COLORS;
+    const names = isInk ? PEN_COLOR_NAMES : HL_COLOR_NAMES;
+    const cur = mem[kind].color;
     colors.forEach((c, i) => {
       const on = i === cur;
       styleEl.append(h('button', {
@@ -209,9 +220,9 @@ export function createToolbar({ onTool, onUndo, onRedo, onBack, onTitle, onPageM
       type: 'button', className: 'tb-btn tb-sw tb-custom' + (customOn ? ' on' : ''), title: 'Eigene Farbe wählen',
       'aria-label': 'Eigene Farbe wählen', 'aria-pressed': customOn ? 'true' : 'false', onclick: openCustomColor,
     }, h('span', { className: 'tb-dot', style: { background: mem[kind].custom } })));
-    if (isPen) {
+    if (isInk) {
       PEN_WIDTHS.forEach((_, i) => {
-        const on = i === mem.pen.width;
+        const on = i === mem[kind].width;
         const d = WIDTH_DOTS[i];
         styleEl.append(h('button', {
           type: 'button', className: 'tb-btn tb-w' + (on ? ' on' : ''), title: ['Fein', 'Mittel', 'Dick'][i],
@@ -232,13 +243,13 @@ export function createToolbar({ onTool, onUndo, onRedo, onBack, onTitle, onPageM
 
   function applyCustom(v) {
     if (!isHexColor(v)) return;
-    if (kind !== 'pen' && kind !== 'highlighter') return;
+    if (!COLOR_KINDS.includes(kind)) return;
     mem[kind].custom = v.toLowerCase();
     setColor(mem[kind].custom);
   }
 
   function openCustomColor() {
-    if (kind !== 'pen' && kind !== 'highlighter') return;
+    if (!COLOR_KINDS.includes(kind)) return;
     setColor(mem[kind].custom);
     colorInput.value = mem[kind].custom;
     try {
@@ -295,6 +306,7 @@ export function createToolbar({ onTool, onUndo, onRedo, onBack, onTitle, onPageM
       return;
     }
     if (key === 'p') selectKind('pen');
+    else if (key === 'b') selectKind('pencil');
     else if (key === 'h') selectKind('highlighter');
     else if (key === 'e') selectKind('eraser');
     else if (key === 'l') selectKind('lasso');
@@ -328,10 +340,10 @@ export function createToolbar({ onTool, onUndo, onRedo, onBack, onTitle, onPageM
     setTool(t) {
       if (!t || !KINDS.includes(t.kind)) return;
       kind = t.kind;
-      if (kind === 'pen') {
-        mem.pen.color = penColorOf(t.color);
-        if (isHexColor(t.color)) mem.pen.custom = t.color.toLowerCase();
-        mem.pen.width = idx(t.width, PEN_WIDTHS.length);
+      if (kind === 'pen' || kind === 'pencil') {
+        mem[kind].color = penColorOf(t.color);
+        if (isHexColor(t.color)) mem[kind].custom = t.color.toLowerCase();
+        mem[kind].width = idx(t.width, PEN_WIDTHS.length);
       } else if (kind === 'highlighter') {
         mem.highlighter.color = hlColorOf(t.color);
         if (isHexColor(t.color)) mem.highlighter.custom = t.color.toLowerCase();

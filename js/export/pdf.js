@@ -3,9 +3,10 @@
 // (je Strich ein Pfad). Einheiten: Seiten in 0,1 mm (ink/*), PDF in Punkt (1 pt = 1/72 Zoll) mit Ursprung unten links.
 // Stifte: die Vierecke und Kreise aus penShapes werden mit nonzero gefüllt. Die Kreise laufen hier im selben
 // Drehsinn wie die Vierecke (gegen den Uhrzeigersinn im PDF), sonst heben sie sich an Gelenken gegenseitig auf.
+// Bleistift (Typ 'b'): wie Stift, aber mit /GS2 (Deckkraft PENCIL_ALPHA), in Zeichenreihenfolge zwischen den Stiften.
 // Hintergrundbilder: JPEG-Bytes unverändert als Image-XObject (DCTDecode), ein Objekt je Asset.
 
-import { PAGE, HL_WIDTH, HL_ALPHA, PAPER_STYLE, penColor, hlColor } from '../config.js';
+import { PAGE, HL_WIDTH, HL_ALPHA, PENCIL_ALPHA, PAPER_STYLE, penColor, hlColor } from '../config.js';
 import { paperGeometry } from '../ink/paper.js';
 import { penShapes } from '../ink/stroke.js';
 import { decodeStrokes } from '../ink/codec.js';
@@ -42,9 +43,13 @@ function circle(cx, cy, r) {
     + `${num(cx + k)} ${num(cy - r)} ${num(cx + r)} ${num(cy - k)} ${num(cx + r)} ${num(cy)} c h`;
 }
 
-/** Ressourcen-Eintrag ExtGState (Transparenz und Multiplikation für den Textmarker). Gemeinsam für alle Seiten. */
+/**
+ * Ressourcen-Eintrag ExtGState: GS0 deckend (Stift), GS1 Textmarker (Multiplikation), GS2 Bleistift (halbtransparent,
+ * Normal-Blend wie im Canvas). Gemeinsam für alle Seiten.
+ */
 const EXT_GS = `<< /GS0 << /Type /ExtGState /CA 1 /ca 1 /BM /Normal >> `
-  + `/GS1 << /Type /ExtGState /CA ${num(HL_ALPHA)} /ca ${num(HL_ALPHA)} /BM /Multiply >> >>`;
+  + `/GS1 << /Type /ExtGState /CA ${num(HL_ALPHA)} /ca ${num(HL_ALPHA)} /BM /Multiply >> `
+  + `/GS2 << /Type /ExtGState /CA ${num(PENCIL_ALPHA)} /ca ${num(PENCIL_ALPHA)} /BM /Normal >> >>`;
 
 /**
  * Hintergrundbild nach ARCHITEKTUR 10.1 (contain, zentriert): erst Weiß, dann das Bild (Image-XObject /Im1).
@@ -122,13 +127,15 @@ function contentOf(paper, orient, strokes, img = null) {
     }
   }
 
-  // Stifte: je Strich ein Pfad (Vierecke + Kreise), nonzero füllen
-  let penGs = false;
+  // Stifte und Bleistifte: je Strich ein Pfad (Vierecke + Kreise), nonzero füllen. Der aktive Zustand ist nach den
+  // Textmarkern GS1, sonst GS0 (Ausgangszustand des Streams); nur bei einem Wechsel wird /GS… neu gesetzt.
+  let gsNow = hl.length ? '/GS1' : '/GS0';
   for (const s of strokes) {
     if (s.type === 'h') continue;
     const { circles, quads } = penShapes(s);
     if (!quads.length && !circles.length) continue;
-    if (!penGs) { ops.push('/GS0 gs'); penGs = true; }
+    const gs = s.type === 'b' ? '/GS2' : '/GS0';
+    if (gs !== gsNow) { ops.push(`${gs} gs`); gsNow = gs; }
     ops.push(rgb(penColor(s.color), 'rg'));
     for (let i = 0; i < quads.length; i += 8) {
       ops.push(`${X(quads[i])} ${Y(quads[i + 1])} m ${X(quads[i + 2])} ${Y(quads[i + 3])} l ${X(quads[i + 4])} ${Y(quads[i + 5])} l ${X(quads[i + 6])} ${Y(quads[i + 7])} l h`);

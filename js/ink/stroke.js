@@ -77,6 +77,34 @@ export function smoothPoints(raw) {
   return s.points();
 }
 
+/**
+ * Bleistift (type 'b'): der Punktwert p speichert direkt den Radius (p / 4 Einheiten, max. ~6,4 mm), berechnet beim
+ * Zeichnen aus Druck und Neigung. Senkrecht gehalten = fein wie der Stift, flach gehalten = breit zum Schraffieren.
+ * altitude in Radiant (π/2 = senkrecht). Rückgabe 0–1 (wie ein Druckwert für den Smoother).
+ */
+export const PENCIL_P_SCALE = 4;
+export function pencilP(width, pressure, altitude) {
+  const base = (PEN_WIDTHS[width] ?? PEN_WIDTHS[1]) / 2;
+  const deg = (Number.isFinite(altitude) ? altitude : Math.PI / 2) * 180 / Math.PI;
+  const t = Math.max(0, Math.min(1, (50 - deg) / 35));          // 50° und steiler: 0, 15° und flacher: 1
+  const r = base * (0.6 + 0.8 * pressure) * (1 + 11 * t * t);
+  return Math.max(1, Math.min(255, r * PENCIL_P_SCALE)) / 255;
+}
+
+/** Neigung eines Pointer-Events als Höhenwinkel (Radiant, π/2 = senkrecht); ohne Angabe senkrecht. */
+export function altitudeOf(e) {
+  if (e.pointerType !== 'pen') return Math.PI / 2;
+  if (Number.isFinite(e.altitudeAngle)) return e.altitudeAngle;
+  const tx = Math.tan(((e.tiltX || 0) * Math.PI) / 180), ty = Math.tan(((e.tiltY || 0) * Math.PI) / 180);
+  const l = Math.hypot(tx, ty);
+  return l ? Math.atan(1 / l) : Math.PI / 2;
+}
+
+/** Radius at a point of a stroke (pen or pencil). */
+export function radiusAt(stroke, p255) {
+  return stroke.type === 'b' ? p255 / PENCIL_P_SCALE : penRadius(stroke.width, p255);
+}
+
 /** Radius at a point of a pen stroke. */
 export function penRadius(width, p255) {
   const base = PEN_WIDTHS[width] ?? PEN_WIDTHS[1];
@@ -95,7 +123,7 @@ export function penShapes(stroke, from = 0) {
   const quads = [];
   const start = Math.max(0, from);
   for (let i = start; i < n; i++) {
-    const x = pts[i * 3], y = pts[i * 3 + 1], r = penRadius(stroke.width, pts[i * 3 + 2]);
+    const x = pts[i * 3], y = pts[i * 3 + 1], r = radiusAt(stroke, pts[i * 3 + 2]);
     // Joint/end circle: at both ends and wherever the direction changes noticeably.
     let needCircle = i === 0 || i === n - 1;
     if (!needCircle && i > 0) {
@@ -107,7 +135,7 @@ export function penShapes(stroke, from = 0) {
     // During live drawing the last point is temporarily an end point; its circle is redrawn later as needed.
     if (needCircle) circles.push(x, y, r);
     if (i > 0) {
-      const x0 = pts[i * 3 - 3], y0 = pts[i * 3 - 2], r0 = penRadius(stroke.width, pts[i * 3 - 1]);
+      const x0 = pts[i * 3 - 3], y0 = pts[i * 3 - 2], r0 = radiusAt(stroke, pts[i * 3 - 1]);
       const dx = x - x0, dy = y - y0;
       const len = Math.hypot(dx, dy);
       if (len > 0) {
@@ -124,7 +152,7 @@ export function maxRadius(stroke) {
   if (stroke.type === 'h') return HL_WIDTH / 2;
   let m = 0;
   for (let i = 2; i < stroke.pts.length; i += 3) m = Math.max(m, stroke.pts[i]);
-  return penRadius(stroke.width, m);
+  return radiusAt(stroke, m);
 }
 
 /** [minX, minY, maxX, maxY] including stroke width. Cached on the stroke object. */
