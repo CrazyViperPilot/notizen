@@ -402,3 +402,120 @@ function test_admin_routes_forbidden_for_users()
     assert_status(403, $pending->get('admin_users'), 'must_change_password');
     assert_status(403, $pending->post('admin_user_reset', ['id' => $id]), 'must_change_password');
 }
+
+/** Anna's data for the backup tests: folder, notes (one in the trash, one purged), pages with strokes, one asset. */
+function admin_test_backup_data(Client $anna)
+{
+    $assetId = asset_test_put($anna, asset_test_bytes('-backup'));
+    push($anna, [
+        ch('folder', uid_(1), f_data('Schule')),
+        ch('note', uid_(2), n_data('Mathe', uid_(1), 1000, ['pinned' => 1])),
+        ch('page', uid_(3), p_data(uid_(2), '[{"i":"a"}]', 1000, ['paper' => 'math', 'bg' => $assetId])),
+        ch('page', uid_(6), p_data(uid_(2), '[{"i":"alt"}]', 1000, ['deleted_at' => 1500])),
+        ch('note', uid_(4), n_data('Papierkorb', null, 1000, ['deleted_at' => 1500])),
+        ch('note', uid_(5), n_data('Weg')),
+    ]);
+    push($anna, [ch('note', uid_(5), n_data('', null, 2000, ['deleted_at' => 2000, 'purged' => 1]), 1)]);
+    return $assetId;
+}
+
+function test_admin_export_user_backup()
+{
+    $admin = admin_test_client();
+    $anna = user_client('anna');
+    $assetId = admin_test_backup_data($anna);
+    $annaId = admin_test_id('anna');
+
+    $r = $admin->get('admin_export_user', ['user' => (string)$annaId]);
+    assert_status(200, $r);
+    $j = $r['json'];
+    assert_true(isset($j['user'], $j['folders'], $j['notes'], $j['pages'], $j['assets']), 'alle Abschnitte da');
+
+    assert_eq($annaId, $j['user']['id']);
+    assert_eq('anna', $j['user']['username']);
+    assert_true(!isset($j['user']['password_hash']), 'kein Hash in der Ausgabe');
+
+    assert_eq(['Schule'], array_column($j['folders'], 'name'));
+
+    // Trash is included, purged notes are not.
+    $titles = array_column($j['notes'], 'title');
+    sort($titles);
+    assert_eq(['Mathe', 'Papierkorb'], $titles);
+    $noteIds = array_column($j['notes'], 'id');
+    sort($noteIds);
+    assert_eq([uid_(2), uid_(4)], $noteIds);
+    $notesById = [];
+    foreach ($j['notes'] as $n) $notesById[$n['id']] = $n;
+    assert_eq(1, $notesById[uid_(2)]['pinned']);
+    assert_true($notesById[uid_(4)]['deleted_at'] !== null, 'Papierkorb-Notiz mit deleted_at');
+
+    // Pages: live and trashed pages with strokes, nothing purged.
+    $pageIds = array_column($j['pages'], 'id');
+    sort($pageIds);
+    assert_eq([uid_(3), uid_(6)], $pageIds);
+    $pagesById = [];
+    foreach ($j['pages'] as $p) $pagesById[$p['id']] = $p;
+    assert_eq('[{"i":"a"}]', $pagesById[uid_(3)]['strokes']);
+    assert_eq('math', $pagesById[uid_(3)]['paper']);
+    assert_eq($assetId, $pagesById[uid_(3)]['bg']);
+
+    // Assets: metadata only.
+    assert_eq(1, count($j['assets']));
+    $asset = $j['assets'][0];
+    assert_eq($assetId, $asset['id']);
+    assert_eq('image/jpeg', $asset['mime']);
+    assert_eq(1, $asset['w']);
+    assert_eq(1, $asset['h']);
+    assert_eq(strlen(asset_test_bytes('-backup')), $asset['bytes']);
+    assert_true(!isset($asset['data']), 'keine Bilddaten in der Sicherung');
+
+    // Protocol entry.
+    $log = $admin->get('admin_log')['json']['entries'][0];
+    assert_eq('backup', $log['action']);
+    assert_eq($annaId, $log['target_user_id']);
+    assert_eq('username=anna', $log['details']);
+    assert_eq(T_ADMIN_USER, $log['admin_username']);
+}
+
+function test_admin_export_user_errors()
+{
+    $admin = admin_test_client();
+    $bob = user_client('bob');
+    assert_status(400, $admin->get('admin_export_user'), 'invalid');
+    assert_status(400, $admin->get('admin_export_user', ['user' => '0']), 'invalid');
+    assert_status(400, $admin->get('admin_export_user', ['user' => 'abc']), 'invalid');
+    assert_status(404, $admin->get('admin_export_user', ['user' => '99999']), 'not_found');
+    assert_status(403, $bob->get('admin_export_user', ['user' => (string)admin_test_id('bob')]), 'forbidden');
+    assert_eq(0, (int)val('SELECT COUNT(*) FROM {admin_log} WHERE action = ?', ['backup']), 'kein Protokoll bei Fehlern');
+}
+
+function test_admin_asset_binary()
+{
+    $admin = admin_test_client();
+    $anna = user_client('anna');
+    $bytes = asset_test_bytes('-admin');
+    $id = asset_test_put($anna, $bytes);
+    $annaId = admin_test_id('anna');
+    $logBefore = (int)val('SELECT COUNT(*) FROM {admin_log}');
+    $r = $admin->get('admin_asset', ['user' => (string)$annaId, 'id' => $id]);
+    assert_status(200, $r);
+    assert_eq('image/jpeg', $r['json']['__type']);
+    assert_eq($bytes, $r['json']['__raw']);
+    assert_eq(NZ_ASSET_CACHE, $r['json']['__cache']);
+    assert_eq($logBefore, (int)val('SELECT COUNT(*) FROM {admin_log}'), 'kein Protokoll pro Bild');
+}
+
+function test_admin_asset_not_found_and_errors()
+{
+    $admin = admin_test_client();
+    $anna = user_client('anna');
+    $bert = user_client('bert');
+    $id = asset_test_put($anna, asset_test_bytes('-admin2'));
+    $annaId = admin_test_id('anna');
+    assert_status(404, $admin->get('admin_asset', ['user' => (string)$annaId, 'id' => str_repeat('a', 64)]), 'not_found');
+    assert_status(404, $admin->get('admin_asset', ['user' => (string)admin_test_id('bert'), 'id' => $id]), 'not_found');
+    assert_status(404, $admin->get('admin_asset', ['user' => '99999', 'id' => $id]), 'not_found');
+    assert_status(400, $admin->get('admin_asset', ['user' => (string)$annaId, 'id' => 'nope']), 'invalid');
+    assert_status(400, $admin->get('admin_asset', ['id' => $id]), 'invalid');
+    assert_status(403, $bert->get('admin_asset', ['user' => (string)$annaId, 'id' => $id]), 'forbidden');
+}

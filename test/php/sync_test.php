@@ -339,3 +339,64 @@ function test_sync_vocab_paper()
     assert_eq(['ok', 'ok'], array_column($r, 'status'));
     assert_eq('vocab', val('SELECT paper FROM {pages} WHERE id = ?', [uid_(2)]));
 }
+
+function test_sync_school_papers()
+{
+    $a = user_client('anna');
+    $changes = [ch('note', uid_(1), n_data('Schule'))];
+    foreach (['lin1', 'lin2', 'lin3', 'lin4', 'math'] as $i => $paper) {
+        $changes[] = ch('page', uid_(10 + $i), p_data(uid_(1), '[]', 1000, ['paper' => $paper]));
+    }
+    $r = push($a, $changes);
+    assert_eq(['ok', 'ok', 'ok', 'ok', 'ok', 'ok'], array_column($r, 'status'));
+    assert_eq('lin1', val('SELECT paper FROM {pages} WHERE id = ?', [uid_(10)]));
+    assert_eq('math', val('SELECT paper FROM {pages} WHERE id = ?', [uid_(14)]));
+    assert_eq('math', $r[5]['row']['paper']);
+    // Unknown paper: rejected with code invalid, nothing stored.
+    $r = push($a, [ch('page', uid_(20), p_data(uid_(1), '[]', 1000, ['paper' => 'lin5']))]);
+    assert_eq('rejected', $r[0]['status']);
+    assert_eq('invalid', $r[0]['code']);
+    assert_eq(0, (int)val('SELECT COUNT(*) FROM {pages} WHERE id = ?', [uid_(20)]));
+}
+
+function test_sync_pinned_roundtrip()
+{
+    $a = user_client('anna');
+    $r = push($a, [ch('note', uid_(1), n_data('Wichtig', null, 1000, ['pinned' => 1])), ch('note', uid_(2), n_data('Normal'))]);
+    assert_eq([1, 0], [$r[0]['row']['pinned'], $r[1]['row']['pinned']]);
+    list($items) = pull_all($a);
+    assert_eq(1, $items[uid_(1)]['row']['pinned']);
+    assert_eq(0, $items[uid_(2)]['row']['pinned']);
+    // Unpin with base_rev 1.
+    $r = push($a, [ch('note', uid_(1), n_data('Wichtig', null, 2000, ['pinned' => 0]), 1)]);
+    assert_eq('ok', $r[0]['status']);
+    assert_eq(0, $r[0]['row']['pinned']);
+    assert_eq(0, (int)val('SELECT pinned FROM {notes} WHERE id = ?', [uid_(1)]));
+}
+
+function test_sync_pinned_conflict_last_write_wins()
+{
+    $a = user_client('anna');
+    push($a, [ch('note', uid_(1), n_data('N', null, 1000))]);                        // rev 1, not pinned
+    push($a, [ch('note', uid_(1), n_data('N', null, 3000, ['pinned' => 1]), 1)]);    // device A: pinned, rev 2
+    // Device B, based on rev 1, older: loses, the server row (pinned) stays.
+    $r = push($a, [ch('note', uid_(1), n_data('N', null, 2000, ['pinned' => 0]), 1)]);
+    assert_eq('conflict', $r[0]['status']);
+    assert_eq(1, $r[0]['row']['pinned']);
+    // Device B, based on rev 1, newer: wins the whole row.
+    $r = push($a, [ch('note', uid_(1), n_data('N', null, 4000, ['pinned' => 0]), 1)]);
+    assert_eq('conflict', $r[0]['status']);
+    assert_eq(0, $r[0]['row']['pinned']);
+    assert_eq(3, $r[0]['row']['rev']);
+    assert_eq(0, (int)val('SELECT pinned FROM {notes} WHERE id = ?', [uid_(1)]));
+}
+
+function test_sync_purge_clears_pinned()
+{
+    $a = user_client('anna');
+    push($a, [ch('note', uid_(1), n_data('N', null, 1000, ['pinned' => 1]))]);
+    $r = push($a, [ch('note', uid_(1), n_data('', null, 5000, ['deleted_at' => 5000, 'purged' => 1, 'pinned' => 1]), 1)]);
+    assert_eq('ok', $r[0]['status']);
+    assert_eq(0, $r[0]['row']['pinned']);
+    assert_eq(0, (int)val('SELECT pinned FROM {notes} WHERE id = ?', [uid_(1)]));
+}

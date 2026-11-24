@@ -61,12 +61,16 @@ function sync_clean($kind, $d)
     $c[$parentKey] = $parent;
 
     if ($kind === 'folder') $c['name'] = clean_text(isset($d['name']) ? $d['name'] : '', 200, 'Ordnername', true);
-    if ($kind === 'note') $c['title'] = clean_text(isset($d['title']) ? $d['title'] : '', 200, 'Titel', true);
+    if ($kind === 'note') {
+        $c['title'] = clean_text(isset($d['title']) ? $d['title'] : '', 200, 'Titel', true);
+        $c['pinned'] = !empty($d['pinned']) ? 1 : 0;
+    }
     if ($kind === 'page') {
         $pos = isset($d['pos']) ? $d['pos'] : null;
         if (!is_int($pos) && !is_float($pos) || !is_finite((float)$pos)) fail(400, 'invalid', 'pos ungültig.');
         $c['pos'] = (float)$pos;
-        $c['paper'] = isset($d['paper']) && in_array($d['paper'], ['blank', 'lined', 'grid', 'dotted', 'vocab'], true) ? $d['paper'] : fail(400, 'invalid', 'Papier ungültig.');
+        $papers = ['blank', 'lined', 'grid', 'dotted', 'vocab', 'lin1', 'lin2', 'lin3', 'lin4', 'math'];
+        $c['paper'] = isset($d['paper']) && in_array($d['paper'], $papers, true) ? $d['paper'] : fail(400, 'invalid', 'Papier ungültig.');
         $c['orient'] = isset($d['orient']) && in_array($d['orient'], ['p', 'l'], true) ? $d['orient'] : fail(400, 'invalid', 'Ausrichtung ungültig.');
         $bg = isset($d['bg']) ? $d['bg'] : null;
         if ($bg !== null && !asset_id_valid($bg)) fail(400, 'invalid', 'Bild ungültig.');
@@ -87,7 +91,7 @@ function sync_clean($kind, $d)
 function sync_blank($kind, array $c)
 {
     if ($kind === 'folder') $c['name'] = '';
-    if ($kind === 'note') $c['title'] = '';
+    if ($kind === 'note') { $c['title'] = ''; $c['pinned'] = 0; }
     if ($kind === 'page') { $c['strokes'] = '[]'; $c['bytes'] = 0; $c['bg'] = null; }
     return $c;
 }
@@ -105,7 +109,7 @@ function sync_row_out($kind, array $r, $withStrokes)
         'seq' => (int)$r['seq'],
     ];
     if ($kind === 'folder') { $o['parent_id'] = $r['parent_id']; $o['name'] = $r['name']; }
-    if ($kind === 'note') { $o['folder_id'] = $r['folder_id']; $o['title'] = $r['title']; }
+    if ($kind === 'note') { $o['folder_id'] = $r['folder_id']; $o['title'] = $r['title']; $o['pinned'] = (int)$r['pinned']; }
     if ($kind === 'page') {
         $o['note_id'] = $r['note_id'];
         $o['pos'] = (float)$r['pos'];
@@ -244,7 +248,7 @@ function row_cols($kind, array $row)
 {
     $keep = ['created_at', 'updated_at', 'deleted_at', 'purged', sync_kinds()[$kind]['parent']];
     if ($kind === 'folder') $keep[] = 'name';
-    if ($kind === 'note') $keep[] = 'title';
+    if ($kind === 'note') { $keep[] = 'title'; $keep[] = 'pinned'; }
     if ($kind === 'page') $keep = array_merge($keep, ['pos', 'paper', 'orient', 'bg', 'strokes', 'bytes', 'conflict']);
     $c = [];
     foreach ($keep as $k) $c[$k] = $row[$k];

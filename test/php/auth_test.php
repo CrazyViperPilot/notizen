@@ -5,7 +5,7 @@ function test_ping()
 {
     $r = (new Client())->get('ping');
     assert_status(200, $r);
-    assert_eq(3, $r['json']['schema']);
+    assert_eq(4, $r['json']['schema']);
 }
 
 function test_unknown_route_and_method()
@@ -195,4 +195,14 @@ function test_bad_json_body()
     list($status, $json) = dispatch();
     assert_eq(400, $status);
     assert_eq('bad_json', $json['error']['code']);
+}
+
+function test_logout_wipe_clears_site_cache()
+{
+    $c = user_client('anna');
+    $c->post('logout', ['wipe' => true]);
+    assert_true(in_array('Clear-Site-Data: "cache"', $GLOBALS['NZ_RES']['headers'], true), 'Clear-Site-Data gesetzt');
+    $d = user_client('bert');
+    $d->post('logout');
+    assert_eq([], $GLOBALS['NZ_RES']['headers']);
 }

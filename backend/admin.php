@@ -337,3 +337,52 @@ function route_admin_pages($admin)
 
 route('admin_tree', 'GET', 'route_admin_tree', 'admin');
 route('admin_pages', 'GET', 'route_admin_pages', 'admin');
+
+/** Target user id from the query parameter "user" (whole number > 0, otherwise 400). */
+function admin_query_user_id()
+{
+    return admin_int(param('user', ''), 1, 4294967295, 'Ungültige Benutzer-ID.');
+}
+
+/**
+ * Full backup of one user for the admin (docs/ARCHITEKTUR.md, 11.5): folders, notes and pages (with strokes) that are not
+ * permanently deleted (trash included), plus asset metadata without data. Protocol entry 'backup'.
+ */
+function route_admin_export_user($admin)
+{
+    $userId = admin_query_user_id();
+    $target = one('SELECT * FROM {users} WHERE id = ?', [$userId]);
+    if ($target === null) fail(404, 'not_found', 'Benutzer nicht gefunden.');
+    return tx(function () use ($admin, $target, $userId) {
+        $folders = [];
+        foreach (owner_folders($userId) as $f) $folders[] = sync_row_out('folder', $f, false);
+        $notes = [];
+        foreach (all('SELECT * FROM {notes} WHERE user_id = ? AND purged = 0 ORDER BY seq', [$userId]) as $n) {
+            $notes[] = sync_row_out('note', $n, false);
+        }
+        $pages = [];
+        foreach (all('SELECT * FROM {pages} WHERE user_id = ? AND purged = 0 ORDER BY seq', [$userId]) as $p) {
+            $pages[] = sync_row_out('page', $p, true);
+        }
+        $assets = [];
+        foreach (all('SELECT id, mime, w, h, bytes FROM {assets} WHERE user_id = ? ORDER BY created_at, id', [$userId]) as $a) {
+            $assets[] = ['id' => $a['id'], 'mime' => $a['mime'], 'w' => (int)$a['w'], 'h' => (int)$a['h'], 'bytes' => (int)$a['bytes']];
+        }
+        admin_log($admin['id'], 'backup', $userId, 'username=' . $target['username']);
+        return ['user' => user_public($target), 'folders' => $folders, 'notes' => $notes, 'pages' => $pages, 'assets' => $assets];
+    });
+}
+
+/** Binary image of one asset of a user (like asset_get). No protocol entry per image; 404 if missing. */
+function route_admin_asset($admin)
+{
+    $userId = admin_query_user_id();
+    $id = param('id', '');
+    if (!asset_id_valid($id)) fail(400, 'invalid', 'Ungültige Bild-ID.');
+    $asset = asset_row($userId, $id);
+    if ($asset === null) fail(404, 'not_found', 'Bild nicht gefunden.');
+    return ['__raw' => $asset['data'], '__type' => $asset['mime'], '__cache' => NZ_ASSET_CACHE];
+}
+
+route('admin_export_user', 'GET', 'route_admin_export_user', 'admin');
+route('admin_asset', 'GET', 'route_admin_asset', 'admin');
