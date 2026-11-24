@@ -42,6 +42,7 @@
 
 .acc-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
 .acc-actions .btn { width: 100%; }
+.acc-card > .acc-backup { margin-top: 10px; }
 
 .acc-switch { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: var(--tap); cursor: pointer; }
 .acc-switch input {

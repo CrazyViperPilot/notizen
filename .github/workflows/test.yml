@@ -52,3 +52,50 @@ jobs:
         run: for f in $(git ls-files '*.js' '*.mjs'); do node --check "$f" || exit 1; done
       - name: JS-Tests
         run: if ls test/js/*.test.mjs > /dev/null 2>&1; then node --test test/js/*.test.mjs; else echo "Noch keine JS-Tests."; fi
+
+  e2e:
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: notizen
+        ports: ["3306:3306"]
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -proot"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.3"
+          extensions: pdo_mysql, mbstring
+          coverage: none
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+      - name: config.php für die Testinstanz
+        run: |
+          php -r '
+            $p = "admin-passwort-1";
+            $c = ["db" => ["host" => "127.0.0.1", "port" => 3306, "name" => "notizen", "user" => "root", "pass" => "root", "prefix" => "notizen_"],
+                  "base_path" => "/", "cookie_secure" => false,
+                  "admin" => ["username" => "admin", "password_hash" => password_hash($p, PASSWORD_DEFAULT), "fp" => hash("sha256", "admin\n" . $p)]];
+            file_put_contents("config.php", "<?php\nif (!defined(\"NZ_ENTRY\")) { http_response_code(403); exit; }\nreturn " . var_export($c, true) . ";\n");
+          '
+      - name: PHP-Server starten
+        run: |
+          nohup php -S 127.0.0.1:8080 -t . > php-server.log 2>&1 &
+          for i in $(seq 1 30); do curl -sf "http://127.0.0.1:8080/api.php?r=ping" && break; sleep 1; done
+      - name: Playwright installieren
+        run: |
+          npm install --no-save --no-package-lock playwright@1.63.0
+          npx playwright install --with-deps chromium
+      - name: E2E-Tests
+        env:
+          E2E_BASE: http://127.0.0.1:8080/
+        run: npm run test:e2e
+      - name: Server-Log bei Fehler
+        if: failure()
+        run: tail -n 100 php-server.log

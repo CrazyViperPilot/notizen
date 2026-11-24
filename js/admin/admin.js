@@ -6,6 +6,8 @@
 import { api, ApiError } from '../api.js';
 import { h, toast, dialog, confirmDialog, menu, relTime, formatBytes } from '../ui/dom.js';
 import { createSurface } from '../ink/surface.js';
+import { blobToBase64 } from '../sync.js';
+import { saveFile } from '../export/save.js';
 
 const MB = 1048576;
 const LOG_PAGE = 50;
@@ -20,6 +22,7 @@ const ACTION_TEXT = {
   delete_user: 'gelöscht',
   view_tree: 'Notizen angesehen',
   view_note: 'Notiz geöffnet',
+  backup: 'Sicherung erstellt',
 };
 
 const root = document.getElementById('admin');
@@ -205,7 +208,9 @@ async function renderUsers() {
       count,
       h('span', { className: 'spacer' }),
       h('button', { className: 'btn ghost', type: 'button', text: 'Aktualisieren', onclick: () => renderUsers() }),
+      h('button', { className: 'btn', type: 'button', text: 'Gesamtsicherung herunterladen', onclick: () => downloadAll() }),
       h('button', { className: 'btn primary', type: 'button', text: '+ Benutzer anlegen', onclick: () => createUserDialog() })),
+    h('p', { className: 'notice', text: 'Jede enthaltene Benutzer-Sicherung kann in der App unter Konto → „Backup einspielen“ wiederhergestellt werden.' }),
     h('div', { className: 'user-head', 'aria-hidden': 'true' },
       h('span', { text: 'Benutzer' }), h('span', { text: 'Rolle' }), h('span', { text: 'Status' }),
       h('span', { text: 'Letzte Anmeldung' }), h('span', { text: 'Speicher' }), h('span', { text: 'Notizen' }),
@@ -262,6 +267,7 @@ function openUserMenu(anchor, u) {
   if (!self) items.push({ label: active ? 'Sperren' : 'Entsperren', onSelect: () => toggleLock(u) });
   items.push({ label: 'Überall abmelden', onSelect: () => logoutUser(u) });
   items.push({ label: 'Notizen ansehen', onSelect: () => showNotes(u) });
+  items.push({ label: 'Sicherung dieses Benutzers', onSelect: () => downloadUserBackup(u) });
   if (!self) items.push('sep', { label: 'Löschen', danger: true, onSelect: () => deleteUser(u) });
   menu(anchor, items);
 }
@@ -476,6 +482,190 @@ async function copyText(el, text) {
   sel.removeAllRanges();
   sel.addRange(range);
   toast('Passwort markiert. Bitte manuell kopieren.');
+}
+
+// ───────────────────────── Datensicherung (ARCHITEKTUR 11.5) ─────────────────────────
+
+let backupRunning = false;  // nur ein Sicherungsvorgang gleichzeitig
+
+/** Ergebnis-Fehler beim Abbruch über den Fortschrittsdialog. */
+const abortedError = () => Object.assign(new Error('Abgebrochen.'), { aborted: true });
+
+const pad2 = (n) => String(n).padStart(2, '0');
+const dayOf = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+const arr = (v) => (Array.isArray(v) ? v : []);
+
+/**
+ * Nur Ordner, Notizen und Seiten, die in der App sichtbar wären: ohne Papierkorb und ohne Inhalt gelöschter Ordner
+ * (gleiche Regeln wie owner_tree in backend/tree.php).
+ */
+function liveParts(res) {
+  const folderRows = arr(res.folders);
+  const byId = new Map(folderRows.map((f) => [f.id, f]));
+  const folderLive = (id) => {
+    let cur = byId.get(id);
+    for (let depth = 0; cur && depth < 200; depth++) {
+      if (cur.deleted_at != null) return false;
+      if (!cur.parent_id) return true;
+      cur = byId.get(cur.parent_id);
+    }
+    return false;
+  };
+  const folders = folderRows.filter((f) => folderLive(f.id));
+  const notes = arr(res.notes).filter((n) => n.deleted_at == null && (!n.folder_id || folderLive(n.folder_id)));
+  const noteIds = new Set(notes.map((n) => n.id));
+  const pages = arr(res.pages).filter((p) => p.deleted_at == null && p.purged !== 1 && noteIds.has(p.note_id));
+  return { folders, notes, pages };
+}
+
+/** Ein Benutzer-Backup im Format von js/export/backup.js (format notizen-backup, version 2). */
+function backupDoc(parts, assets) {
+  const have = new Set(assets.map((a) => a.id));
+  return {
+    format: 'notizen-backup',
+    version: 2,
+    exported_at: new Date().toISOString(),
+    folders: parts.folders.map((f) => ({
+      id: f.id, parent_id: f.parent_id || null, name: f.name, created_at: f.created_at, updated_at: f.updated_at,
+    })),
+    notes: parts.notes.map((n) => ({
+      id: n.id, folder_id: n.folder_id || null, title: n.title, created_at: n.created_at, updated_at: n.updated_at,
+    })),
+    pages: parts.pages.map((p) => ({
+      id: p.id,
+      note_id: p.note_id,
+      pos: p.pos,
+      paper: p.paper,
+      orient: p.orient,
+      strokes: typeof p.strokes === 'string' ? p.strokes : JSON.stringify(p.strokes || []),
+      bg: p.bg && have.has(p.bg) ? p.bg : null,
+      created_at: p.created_at,
+      updated_at: p.updated_at,
+    })),
+    assets,
+  };
+}
+
+/**
+ * Lädt alles für ein Benutzer-Backup: admin_export_user, dann je Bild admin_asset (Base64).
+ * Bilder, die nicht geladen werden können, fehlen (job.missing); Netz- und Sitzungsfehler brechen ab.
+ */
+async function fetchUserBackup(u, job, label) {
+  job.show(`${label} …`);
+  const res = await api.get('admin_export_user', { user: u.id });
+  const list = arr(res.assets);
+  const assets = [];
+  for (let i = 0; i < list.length; i++) {
+    if (job.cancelled) throw abortedError();
+    const a = list[i];
+    job.show(`${label}, Bild ${i + 1} von ${list.length} …`);
+    try {
+      const blob = await api.blob('admin_asset', { user: u.id, id: a.id });
+      assets.push({ id: a.id, mime: a.mime || 'image/jpeg', w: a.w, h: a.h, data: await blobToBase64(blob) });
+    } catch (e) {
+      if (e instanceof ApiError && (e.status === 0 || e.status === 401)) throw e;
+      job.missing++;
+    }
+  }
+  if (job.cancelled) throw abortedError();
+  return { user: res.user || u, backup: backupDoc(liveParts(res), assets) };
+}
+
+/**
+ * Fortschrittsdialog mit Abbrechen. run(job) nutzt job.show(text), job.cancelled und zählt job.missing.
+ * Liefert {value, missing} oder null bei Abbruch. Fehler aus run werden weitergereicht.
+ */
+async function withProgress(title, run) {
+  const job = { cancelled: false, missing: 0, show: () => {} };
+  const line = h('p', { className: 'hint', role: 'status', text: 'Wird vorbereitet …' });
+  job.show = (text) => { line.textContent = text; };
+  let finish = null;
+  const closed = dialog({
+    title,
+    dismissible: false,
+    body: (close) => { finish = close; return h('div', {}, line); },
+    actions: [{ label: 'Abbrechen', value: 'cancel' }],
+    onAction: () => { job.cancelled = true; return true; },
+  });
+  let value = null;
+  let failure = null;
+  try {
+    value = await run(job);
+  } catch (e) {
+    failure = e;
+  } finally {
+    if (finish) finish('fertig');
+  }
+  await closed;
+  if (job.cancelled) return null;
+  if (failure) throw failure;
+  return { value, missing: job.missing };
+}
+
+/** JSON als Blob: gzip per CompressionStream, wenn vorhanden, sonst reines JSON. */
+async function packJson(doc) {
+  const json = JSON.stringify(doc);
+  if (typeof CompressionStream === 'function' && typeof Response === 'function') {
+    try {
+      const stream = new Blob([new TextEncoder().encode(json)]).stream().pipeThrough(new CompressionStream('gzip'));
+      return new Blob([await new Response(stream).arrayBuffer()], { type: 'application/gzip' });
+    } catch {
+      /* ohne Kompression weiter */
+    }
+  }
+  return new Blob([json], { type: 'application/json' });
+}
+
+function missingText(n) {
+  return `${n} ${n === 1 ? 'Bild konnte' : 'Bilder konnten'} nicht geladen werden und fehlt in der Sicherung.`;
+}
+
+/** Gesamtsicherung aller Benutzer → notizen-sicherung-JJJJ-MM-TT.json.gz (oder .json ohne gzip). */
+async function downloadAll() {
+  if (backupRunning) return;
+  backupRunning = true;
+  try {
+    const list = arr((await api.get('admin_users')).users);
+    const result = await withProgress('Gesamtsicherung', async (job) => {
+      const users = [];
+      for (let i = 0; i < list.length; i++) {
+        users.push(await fetchUserBackup(list[i], job, `Benutzer ${i + 1} von ${list.length}`));
+      }
+      return users;
+    });
+    if (!result) { toast('Gesamtsicherung abgebrochen.'); return; }
+    const doc = {
+      format: 'notizen-admin-backup',
+      version: 1,
+      exported_at: new Date().toISOString(),
+      users: result.value.map((x) => ({ user: x.user, backup: x.backup })),
+    };
+    const blob = await packJson(doc);
+    const ext = blob.type === 'application/gzip' ? '.json.gz' : '.json';
+    await saveFile(blob, `notizen-sicherung-${dayOf(new Date())}${ext}`);
+    if (result.missing > 0) toast(missingText(result.missing), { type: 'error', ms: 6000 });
+  } catch (e) {
+    showErr(e);
+  } finally {
+    backupRunning = false;
+  }
+}
+
+/** Sicherung eines einzelnen Benutzers als .notizen (direkt in der App einspielbar). */
+async function downloadUserBackup(u) {
+  if (backupRunning) return;
+  backupRunning = true;
+  try {
+    const result = await withProgress('Sicherung dieses Benutzers', (job) => fetchUserBackup(u, job, `Benutzer ${displayName(u)}`));
+    if (!result) { toast('Sicherung abgebrochen.'); return; }
+    const blob = await packJson(result.value.backup);
+    await saveFile(blob, `notizen-backup-${u.username}-${dayOf(new Date())}.notizen`);
+    if (result.missing > 0) toast(missingText(result.missing), { type: 'error', ms: 6000 });
+  } catch (e) {
+    showErr(e);
+  } finally {
+    backupRunning = false;
+  }
 }
 
 // ───────────────────────── Notizen ansehen (nur lesen) ─────────────────────────

@@ -35,6 +35,19 @@ export async function mountAccount(el, params, ctx) {
   ctx.model.on('sync', onSync);
   updateSyncLine();
 
+  // ── Datensicherung (ARCHITEKTUR 11.5): Datei erstellen bzw. einspielen ──
+  let backupBusy = false;
+  let restoreBusy = false;
+  // Die Datei-Auswahl wird im Klick geöffnet (iPad): kein await davor.
+  const restoreInput = h('input', {
+    type: 'file',
+    hidden: true,
+    accept: '.notizen,.json,.gz,application/json,application/gzip',
+    onchange: (e) => run(restoreFromFile(e.target)),
+  });
+  const backupBtn = h('button', { className: 'btn primary', type: 'button', text: 'Backup herunterladen', onclick: () => run(downloadBackup()) });
+  const restoreBtn = h('button', { className: 'btn', type: 'button', text: 'Backup einspielen…', onclick: () => restoreInput.click() });
+
   // ── Passwort ändern ──
   const oldIn = makeInput('current-password', 'Passwort');
   const newIn = makeInput('new-password', 'Neues Passwort');
@@ -82,6 +95,11 @@ export async function mountAccount(el, params, ctx) {
       section('Synchronisation',
         row('Status', badge.el),
         syncLine),
+      section('Datensicherung',
+        h('p', { className: 'muted acc-hint', text: 'Eine Sicherung ist eine Datei mit allen deinen Notizen, Seiten und Bildern. Sie wird auf diesem Gerät erstellt bzw. eingespielt.' }),
+        h('div', { className: 'acc-actions acc-backup' }, backupBtn, restoreBtn),
+        h('p', { className: 'muted acc-hint', text: 'Beim Einspielen landen die Notizen als Kopie in einem neuen Ordner „Import …“. Vorhandene Notizen bleiben unverändert.' }),
+        restoreInput),
       section('Passwort ändern', pwForm),
       section('Sitzung',
         h('div', { className: 'acc-actions' }, logoutAllBtn, logoutBtn),
@@ -155,6 +173,51 @@ export async function mountAccount(el, params, ctx) {
     }
   }
 
+  async function downloadBackup() {
+    if (backupBusy) return;
+    backupBusy = true;
+    backupBtn.disabled = true;
+    backupBtn.textContent = 'Sicherung wird erstellt …';
+    try {
+      const { exportAllWithInfo } = await import('../export/backup.js');
+      const { saveFile } = await import('../export/save.js');
+      const { blob, skipped } = await exportAllWithInfo(ctx.model);
+      await saveFile(blob, `notizen-backup-${isoDay(new Date())}.notizen`);
+      if (skipped > 0) toast(`${skipped} Seiten/Bilder waren noch nicht geladen und fehlen.`, { ms: 6000 });
+    } catch (e) {
+      console.error(e);
+      toast(plainMessage(e, 'Die Sicherung ist fehlgeschlagen.'), { type: 'error', ms: 5000 });
+    } finally {
+      backupBusy = false;
+      backupBtn.disabled = false;
+      backupBtn.textContent = 'Backup herunterladen';
+    }
+  }
+
+  async function restoreFromFile(input) {
+    // Datei sofort übernehmen (Auswahl wird zurückgesetzt, damit dieselbe Datei erneut gewählt werden kann).
+    const file = input.files && input.files[0];
+    input.value = '';
+    if (!file || restoreBusy) return;
+    restoreBusy = true;
+    restoreBtn.disabled = true;
+    restoreBtn.textContent = 'Wird eingespielt …';
+    const day = dayText(new Date());
+    try {
+      const { importBackup } = await import('../export/backup.js');
+      const r = await importBackup(ctx.model, file);
+      const parts = [count(r.folders, 'Ordner', 'Ordner'), count(r.notes, 'Notiz', 'Notizen'), count(r.pages, 'Seite', 'Seiten')];
+      if (r.assets > 0) parts.push(count(r.assets, 'Bild', 'Bilder'));
+      toast(`${parts.join(', ')} eingespielt – im Ordner „Import ${day}“`, { type: 'ok', ms: 6000 });
+    } catch (e) {
+      toast(plainMessage(e, 'Das Backup konnte nicht eingespielt werden.'), { type: 'error', ms: 6000 });
+    } finally {
+      restoreBusy = false;
+      restoreBtn.disabled = false;
+      restoreBtn.textContent = 'Backup einspielen…';
+    }
+  }
+
   async function logoutAll() {
     const pending = await ctx.model.pendingCount().catch(() => 0);
     const ok = await confirmDialog({
@@ -200,6 +263,25 @@ function makeInput(autocomplete, label) {
 
 function roleLabel(role) {
   return role === 'admin' ? 'Admin' : 'Benutzer';
+}
+
+/** Dateiname-Datum JJJJ-MM-TT (Ortszeit). */
+function isoDay(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/** Anzeige-Datum wie der Importordner „Import <Datum>“ in js/export/backup.js. */
+function dayText(d) {
+  return d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+
+function count(n, one, many) {
+  return `${n} ${n === 1 ? one : many}`;
+}
+
+/** Fehlertext für Toasts: die Meldung der Ausnahme, sonst ein Standardtext. */
+function plainMessage(e, fallback) {
+  return e && typeof e.message === 'string' && e.message ? e.message : fallback;
 }
 
 function isNetwork(err) {
