@@ -44,7 +44,7 @@ test('Vokabel-Abfrage: Zähler, Abdeckung, Nächste, Antippen', { timeout: 24000
     // Abfragen einschalten
     await page.locator('.tb-quiz').click();
     await page.locator('.quiz-bar').waitFor({ state: 'visible' });
-    const count = page.locator('.quiz-count');
+    const count = page.locator('.quiz-count:not(.quiz-round)');
     await until(async () => (await count.textContent()) === 'gekonnt: 1 von 5', { what: 'Zähler „gekonnt: 1 von 5“' });
 
     // Abdeckungen: eine pro belegter Zeile, die gekonnte ist grün (known) und bleibt offen
@@ -61,6 +61,25 @@ test('Vokabel-Abfrage: Zähler, Abdeckung, Nächste, Antippen', { timeout: 24000
     await pen(page, [[1200, rowCenter(3)]]);
     await until(async () => (await page.locator('.nz-cover-row.open').count()) === 1, { what: 'aufgedeckte Zeile' });
     assert.equal(await page.locator('.nz-cover-row.known').count(), 1, 'Häkchen bleibt unverändert');
+
+    // Antwort „Gewusst“: Haken wird gesetzt, Zähler steigt, Runde zählt mit
+    await page.getByRole('button', { name: '✓ Gewusst' }).click();
+    await until(async () => (await count.textContent()) === 'gekonnt: 2 von 5', { what: 'Zähler „gekonnt: 2 von 5“' });
+    assert.equal(await page.locator('.nz-cover-row.known').count(), 2, 'zweite Zeile gekonnt');
+    assert.match(await page.locator('.quiz-round').textContent(), /1 ✓ · 0 ✗/);
+
+    // Nächste offene Zeile aufdecken und „Nicht gewusst“: wieder zugedeckt, Zähler bleibt
+    const open = async () => page.locator('.nz-cover-row:not(.known):not(.open)').count();
+    await pen(page, [[1200, rowCenter(4)]]);
+    await until(async () => (await page.locator('.nz-cover-row.open').count()) === 1, { what: 'Zeile 4 aufgedeckt' });
+    await page.getByRole('button', { name: '✗ Nicht gewusst' }).click();
+    await until(async () => (await page.locator('.nz-cover-row.open').count()) === 0, { what: 'wieder zugedeckt' });
+    assert.equal(await count.textContent(), 'gekonnt: 2 von 5');
+    assert.ok((await open()) >= 1);
+    assert.match(await page.locator('.quiz-round').textContent(), /1 ✓ · 1 ✗/);
+
+    // Der Haken ist gespeichert (Strich in der Abhak-Spalte)
+    await until(async () => (await strokesOf(page, noteId)).length === 7, { what: 'gespeicherter Haken' });
 
     assertNoErrors(dev.errors);
     assertNoErrors(admin.errors);

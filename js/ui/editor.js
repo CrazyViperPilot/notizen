@@ -70,13 +70,21 @@ export async function mountEditor(el, { noteId }, ctx) {
   let quizSide = null;
   const quizSwap = h('button', { type: 'button', className: 'btn', onclick: () => startQuiz(quizSide === 'right' ? 'left' : 'right') });
   const quizCount = h('span', { className: 'quiz-count', 'aria-live': 'polite' });
+  const quizRound = h('span', { className: 'quiz-count quiz-round' });
+  let roundRight = 0, roundWrong = 0;
+  // Shown while a row is revealed: did she know it?
+  const quizAnswer = h('div', { className: 'quiz-answer', hidden: true },
+    h('button', { type: 'button', className: 'btn quiz-yes', text: '✓ Gewusst', onclick: () => answer(true) }),
+    h('button', { type: 'button', className: 'btn quiz-no', text: '✗ Nicht gewusst', onclick: () => answer(false) }));
   const quizBar = h('div', { className: 'quiz-bar', role: 'toolbar', 'aria-label': 'Abfragen', hidden: true },
     h('span', { className: 'quiz-title', text: 'Abfragen' }),
     quizCount,
+    quizRound,
+    quizAnswer,
     h('button', { type: 'button', className: 'btn primary', text: 'Nächste', title: 'Zufällige Vokabel abfragen', onclick: () => quizNext() }),
     quizSwap,
-    h('button', { type: 'button', className: 'btn', text: 'Alle aufdecken', onclick: () => surface.quizAll(true) }),
-    h('button', { type: 'button', className: 'btn', text: 'Alle zudecken', onclick: () => surface.quizAll(false) }),
+    h('button', { type: 'button', className: 'btn', text: 'Alle aufdecken', onclick: () => { quizAnswer.hidden = true; surface.quizAll(true); } }),
+    h('button', { type: 'button', className: 'btn', text: 'Alle zudecken', onclick: () => { quizAnswer.hidden = true; surface.quizAll(false); } }),
     h('button', { type: 'button', className: 'btn primary', text: 'Fertig', onclick: () => stopQuiz() }));
   el.replaceChildren(toolbar.el, h('div', { className: 'ed-body' }, holder, hint, quizBar));
 
@@ -131,9 +139,19 @@ export async function mountEditor(el, { noteId }, ctx) {
     if (!quizSide) return;
     const s = surface.quizStats();
     quizCount.textContent = s.filled ? `gekonnt: ${s.known} von ${s.filled}` : 'noch keine Vokabeln';
+    quizRound.textContent = roundRight + roundWrong ? `Runde: ${roundRight} ✓ · ${roundWrong} ✗` : '';
+  }
+
+  function answer(knew) {
+    if (!surface.quizAnswer(knew)) return;
+    if (knew) roundRight++; else roundWrong++;
+    quizAnswer.hidden = true;
+    updateQuizCount();
+    quizNext();
   }
 
   function quizNext() {
+    quizAnswer.hidden = true;
     if (!surface.quizNext()) {
       toast('Runde fertig – alle offenen Vokabeln wurden gefragt.', { type: 'ok' });
       surface.quizNext(); // starts the next round right away
@@ -142,6 +160,9 @@ export async function mountEditor(el, { noteId }, ctx) {
 
   function startQuiz(side) {
     quizSide = side;
+    roundRight = 0;
+    roundWrong = 0;
+    quizAnswer.hidden = true;
     surface.setQuiz({ side });
     updateQuizCount();
     quizSwap.textContent = side === 'right' ? 'Wörter abdecken' : 'Übersetzung abdecken';
@@ -158,6 +179,7 @@ export async function mountEditor(el, { noteId }, ctx) {
 
   const surface = createSurface(holder, { fingerDraw: fingerDrawPref(), getImage: (id) => model.getImage(id, { noteId }) });
   surface.addEventListener('selection', (e) => renderSelBar(e.detail));
+  surface.addEventListener('quiz', (e) => { quizAnswer.hidden = !(quizSide && e.detail && e.detail.open); });
   document.addEventListener('keydown', onSelKey);
   toolbar.setTitle(note.title);
   model.noteOpened(noteId);

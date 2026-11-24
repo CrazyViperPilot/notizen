@@ -69,7 +69,8 @@ Das erste Admin-Konto kommt aus GitHub-Secrets (Abschnitt 9). Weitere Admins kan
 - **Vokabeln abfragen:** Hat eine Notiz Vokabel-Seiten, zeigt die Werkzeugleiste „Abfragen“. Dann ist die Übersetzungs-Spalte
   abgedeckt (umschaltbar: die Wörter abdecken); Antippen einer Zeile mit Finger oder Stift deckt sie auf bzw. wieder zu,
   Scrollen bleibt möglich, die Abhak-Spalte bleibt frei. Abgehakte Zeilen gelten als gekonnt (bleiben offen, grün), Zähler „gekonnt: x von y“,
-  „Nächste“ fragt eine zufällige offene Vokabel ab. „Alle aufdecken“, „Alle zudecken“, „Fertig“. Nichts davon wird gespeichert.
+  „Nächste“ fragt eine zufällige offene Vokabel ab. Nach dem Aufdecken antwortet man mit „✓ Gewusst“ (setzt automatisch den Haken)
+  oder „✗ Nicht gewusst“ (wieder zugedeckt, kommt später erneut); danach geht es automatisch weiter. „Alle aufdecken“, „Alle zudecken“, „Fertig“. Nichts davon wird gespeichert.
   Papier ist weiß, Linien hellgrau bzw. hellblau.
 - Neue Notiz: Titel (Standard: Datum), Papiersorte und Ausrichtung wählen. Die Werte der letzten Notiz sind vorausgewählt.
 - **Seitenübersicht** (Miniaturen, springen, umsortieren per Ziehen, duplizieren, löschen).

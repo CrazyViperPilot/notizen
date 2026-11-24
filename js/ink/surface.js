@@ -158,6 +158,7 @@ class Surface extends EventTarget {
   /** Reveal (true) or cover (false) all rows while quizzing. */
   quizAll(reveal) {
     if (!this.quiz) return;
+    this.quiz.current = null;
     this.quiz.open = new Map();
     if (reveal) for (const P of this.pages) if (P.paper === 'vocab') this.quiz.open.set(P.id, new Set(vocabLayout(P.orient).rows.map((_, i) => i)));
     this._refreshCovers();
@@ -225,6 +226,35 @@ class Surface extends EventTarget {
    * Random quiz: jumps to a random filled, not ticked row not asked in this round, covers and highlights it.
    * Returns false when the round is complete (a new round starts with the next call).
    */
+  /**
+   * Answer for the revealed row (ARCHITEKTUR 11.2): knew → a check mark is written into the tick cell (saved, synced,
+   * undoable; the row counts as known); did not know → the row is covered again and stays in the pool.
+   * Returns false if no row is revealed.
+   */
+  quizAnswer(knew) {
+    const q = this.quiz && this.quiz.current;
+    if (!q) return false;
+    this.quiz.current = null;
+    const open = this.quiz.open.get(q.P.id);
+    if (open) open.delete(q.row);
+    if (knew && !this._vocabRows(q.P).known[q.row]) {
+      const stroke = this._tickStroke(q.P, q.row);
+      q.P.strokes.push(stroke);
+      this._drawCommitted(q.P, stroke);
+      this._pageChanged(q.P, false);
+      this._pushHistory({ type: 'add', pageId: q.P.id, stroke });
+    }
+    this._removeCover(q.P);
+    this._update();
+    return true;
+  }
+
+  /** The currently revealed row, or null: {pageId, row}. */
+  quizCurrent() {
+    const q = this.quiz && this.quiz.current;
+    return q ? { pageId: q.P.id, row: q.row } : null;
+  }
+
   quizNext() {
     if (!this.quiz) return false;
     const cand = [];
@@ -235,6 +265,7 @@ class Surface extends EventTarget {
     }
     if (!cand.length) { this.quiz.asked.clear(); return false; }
     const { P, i } = cand[Math.floor(Math.random() * cand.length)];
+    this.quiz.current = null;
     this.quiz.asked.add(P.id + ':' + i);
     const open = this.quiz.open.get(P.id);
     if (open) open.delete(i);
@@ -710,9 +741,26 @@ class Surface extends EventTarget {
     let open = this.quiz.open.get(q.P.id);
     if (!open) this.quiz.open.set(q.P.id, (open = new Set()));
     if (open.has(q.row)) open.delete(q.row); else open.add(q.row);
+    this.quiz.current = open.has(q.row) ? { P: q.P, row: q.row } : null;
     this._removeCover(q.P);
     this._update();
     this.dispatchEvent(new CustomEvent('quiz', { detail: { pageId: q.P.id, row: q.row, open: open.has(q.row) } }));
+  }
+
+  /** Green check mark in the tick cell of a vocab row (page units); same stroke format as handwriting. */
+  _tickStroke(P, row) {
+    const L = vocabLayout(P.orient);
+    const [y0, y1] = L.rows[row];
+    const x0 = L.right[1], x1 = P.w;
+    const w = x1 - x0, h = y1 - y0;
+    const corners = [[x0 + w * 0.22, y0 + h * 0.55], [x0 + w * 0.42, y0 + h * 0.8], [x0 + w * 0.78, y0 + h * 0.18]];
+    const pts = [];
+    for (let k = 0; k < corners.length - 1; k++) {
+      const [ax, ay] = corners[k], [bx, by] = corners[k + 1];
+      const n = Math.max(2, Math.ceil(Math.hypot(bx - ax, by - ay) / 8));
+      for (let j = k ? 1 : 0; j <= n; j++) pts.push(Math.round(ax + ((bx - ax) * j) / n), Math.round(ay + ((by - ay) * j) / n), 150);
+    }
+    return { id: strokeId(), type: 'p', color: '#1e8449', width: 1, pts: Int32Array.from(pts) };
   }
 
   _sizeCanvas(P) {

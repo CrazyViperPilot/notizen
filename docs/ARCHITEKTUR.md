@@ -477,7 +477,11 @@ Angelehnt an deutsche Schulhefte; alle Maße in `config.js` (`LINEATUR`), damit 
 - Abfrageleiste zeigt „gekonnt: 18 von 30“ (belegte Zeilen aller Vokabel-Seiten der Notiz).
 - **Zufällig**: Knopf „Nächste“ springt zu einer zufälligen belegten, nicht gekonnten, in dieser Runde noch nicht gefragten Zeile,
   scrollt dorthin und hebt sie kurz hervor; alle gefragt → Hinweis „Runde fertig“ und neue Runde.
-- Surface-API: `quizStats() → {known, filled}`, `quizNext() → bool` (false = Runde fertig). Event `quiz` wie bisher.
+- **Antworten:** Ist eine Zeile aufgedeckt, zeigt die Leiste „✓ Gewusst“ / „✗ Nicht gewusst“. Gewusst → die App schreibt einen grünen
+  Haken (normaler Strich, `#1e8449`) in die Abhak-Zelle – gespeichert, abgeglichen, mit ↶ rückgängig; Nicht gewusst → Zeile wieder zu,
+  bleibt im Pool. Danach automatisch „Nächste“. Rundenzähler „Runde: x ✓ · y ✗“ (nur Anzeige).
+- Surface-API: `quizStats() → {known, filled}`, `quizNext() → bool` (false = Runde fertig), `quizAnswer(knew) → bool`,
+  `quizCurrent() → {pageId, row} | null`. Event `quiz` {pageId, row, open}.
 
 ### 11.3 Favoriten und „Zuletzt geöffnet“
 - `notes.pinned` TINYINT (Migration 004), normales Sync-Feld. `model.setPinned(noteId, bool)`, `model.listPinned() → Note[]`.
