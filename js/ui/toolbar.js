@@ -2,7 +2,7 @@
 // localStorage 'notizen:prefs' (key `tool`). Keyboard shortcuts only work while no input has focus.
 // Everything user-provided goes through textContent / attributes (no innerHTML).
 
-import { PEN_COLORS, PEN_COLOR_NAMES, PEN_WIDTHS, HL_COLORS, HL_COLOR_NAMES, PAPERS, PAPER_NAMES, isHexColor, DEFAULT_CUSTOM_COLOR } from '../config.js';
+import { PEN_COLORS, PEN_COLOR_NAMES, PEN_WIDTHS, HL_COLORS, HL_COLOR_NAMES, PAPERS, PAPER_NAMES, isHexColor, DEFAULT_CUSTOM_COLOR, DEFAULT_CUSTOM_HL_COLOR } from '../config.js';
 import { h, menu, promptText } from './dom.js';
 
 const PREFS_KEY = 'notizen:prefs';
@@ -48,8 +48,11 @@ function writePrefs(p) {
 }
 
 const idx = (v, n) => (Number.isInteger(v) && v >= 0 && v < n ? v : 0);
-/** Pen color: palette index or custom "#rrggbb". */
-const penColorOf = (v) => (isHexColor(v) ? v.toLowerCase() : idx(v, PEN_COLORS.length));
+/** Tool color: palette index or custom "#rrggbb". */
+const colorOf = (v, n) => (isHexColor(v) ? v.toLowerCase() : idx(v, n));
+const penColorOf = (v) => colorOf(v, PEN_COLORS.length);
+const hlColorOf = (v) => colorOf(v, HL_COLORS.length);
+const customOf = (o, fallback) => (o && isHexColor(o.custom) ? o.custom.toLowerCase() : fallback);
 
 /**
  * createToolbar({onTool, onUndo, onRedo, onBack, onTitle, onPageMenu, onAddPage})
@@ -66,9 +69,12 @@ export function createToolbar({ onTool, onUndo, onRedo, onBack, onTitle, onPageM
     pen: {
       color: penColorOf(saved.pen && saved.pen.color),
       width: idx(saved.pen && saved.pen.width, PEN_WIDTHS.length),
-      custom: saved.pen && isHexColor(saved.pen.custom) ? saved.pen.custom.toLowerCase() : DEFAULT_CUSTOM_COLOR,
+      custom: customOf(saved.pen, DEFAULT_CUSTOM_COLOR),
     },
-    highlighter: { color: idx(saved.highlighter && saved.highlighter.color, HL_COLORS.length) },
+    highlighter: {
+      color: hlColorOf(saved.highlighter && saved.highlighter.color),
+      custom: customOf(saved.highlighter, DEFAULT_CUSTOM_HL_COLOR),
+    },
   };
   let pageInfo = { i: 0, n: 0, page: null };
   let titleText = '';
@@ -160,13 +166,13 @@ export function createToolbar({ onTool, onUndo, onRedo, onBack, onTitle, onPageM
         'aria-label': 'Farbe ' + names[i], 'aria-pressed': on ? 'true' : 'false', onclick: () => setColor(i),
       }, h('span', { className: 'tb-dot', style: { background: c } })));
     });
+    // After the palette: any color from the full RGB range (system color picker), per tool.
+    const customOn = isHexColor(cur);
+    styleEl.append(h('button', {
+      type: 'button', className: 'tb-btn tb-sw tb-custom' + (customOn ? ' on' : ''), title: 'Eigene Farbe wählen',
+      'aria-label': 'Eigene Farbe wählen', 'aria-pressed': customOn ? 'true' : 'false', onclick: openCustomColor,
+    }, h('span', { className: 'tb-dot', style: { background: mem[kind].custom } })));
     if (isPen) {
-      // After the palette: any color from the full RGB range (system color picker).
-      const on = isHexColor(cur);
-      styleEl.append(h('button', {
-        type: 'button', className: 'tb-btn tb-sw tb-custom' + (on ? ' on' : ''), title: 'Eigene Farbe wählen',
-        'aria-label': 'Eigene Farbe wählen', 'aria-pressed': on ? 'true' : 'false', onclick: openCustomColor,
-      }, h('span', { className: 'tb-dot', style: { background: mem.pen.custom } })));
       PEN_WIDTHS.forEach((_, i) => {
         const on = i === mem.pen.width;
         const d = WIDTH_DOTS[i];
@@ -189,13 +195,15 @@ export function createToolbar({ onTool, onUndo, onRedo, onBack, onTitle, onPageM
 
   function applyCustom(v) {
     if (!isHexColor(v)) return;
-    mem.pen.custom = v.toLowerCase();
-    if (kind === 'pen') setColor(mem.pen.custom);
+    if (kind === 'eraser') return;
+    mem[kind].custom = v.toLowerCase();
+    setColor(mem[kind].custom);
   }
 
   function openCustomColor() {
-    setColor(mem.pen.custom);
-    colorInput.value = mem.pen.custom;
+    if (kind === 'eraser') return;
+    setColor(mem[kind].custom);
+    colorInput.value = mem[kind].custom;
     try {
       if (typeof colorInput.showPicker === 'function') colorInput.showPicker();
       else colorInput.click();
@@ -276,7 +284,7 @@ export function createToolbar({ onTool, onUndo, onRedo, onBack, onTitle, onPageM
         mem.pen.color = penColorOf(t.color);
         mem.pen.width = idx(t.width, PEN_WIDTHS.length);
       } else if (kind === 'highlighter') {
-        mem.highlighter.color = idx(t.color, HL_COLORS.length);
+        mem.highlighter.color = hlColorOf(t.color);
       }
       persist();
       render();

@@ -11,6 +11,7 @@ export const isHexColor = (c) => typeof c === 'string' && /^#[0-9a-f]{6}$/i.test
 export const penColor = (c) => (isHexColor(c) ? c : PEN_COLORS[c] || PEN_COLORS[0]);
 export const hlColor = (c) => (isHexColor(c) ? c : HL_COLORS[c] || HL_COLORS[0]);
 export const DEFAULT_CUSTOM_COLOR = '#0a8f8f';
+export const DEFAULT_CUSTOM_HL_COLOR = '#ffb000';
 
 export const PEN_WIDTHS = [4, 7, 12];                 // base diameter in 0.1 mm
 export const PEN_WIDTH_NAMES = ['Fein', 'Mittel', 'Dick'];

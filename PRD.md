@@ -71,7 +71,8 @@ Das erste Admin-Konto kommt aus GitHub-Secrets (Abschnitt 9). Weitere Admins kan
 ### 6.2 Werkzeuge
 - **Stift** mit Druckempfindlichkeit, **3 Stärken** (fein, mittel, dick) und **6 Farben** (Schwarz, Dunkelblau, Rot, Grün, Orange, Lila),
   danach ein Feld **„Eigene Farbe“**: öffnet den Farbwähler des Systems (voller RGB-Raum); die zuletzt gewählte eigene Farbe bleibt gemerkt.
-- **Textmarker**: halbtransparent, liegt optisch unter der Schrift, 3 Farben (Gelb, Grün, Pink), fester breiter Strich.
+- **Textmarker**: halbtransparent, liegt optisch unter der Schrift, 3 Farben (Gelb, Grün, Pink) und ebenfalls ein Feld **„Eigene Farbe“**
+  (eigene Farbe wird getrennt vom Stift gemerkt), fester breiter Strich.
 - **Radierer**: löscht ganze Striche, die er berührt (Strich-Radierer). Ein Pixel-Radierer kommt in v1 nicht.
 - **Rückgängig / Wiederholen** (pro geöffneter Notiz, bis zu 100 Schritte, gilt bis zum Schließen der Notiz).
 - Werkzeugleiste oben, kompakt, mit großen Tippflächen (mindestens 44 pt).
