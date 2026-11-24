@@ -35,3 +35,15 @@ export function paperGeometry(paper, orient) {
   cache.set(key, g);
   return g;
 }
+
+/**
+ * Vocabulary layout for the quiz cover (page units): columns {left: [x0, x1], right: [x0, x1]} and the writing rows
+ * [[y0, y1], …] below the heading row (each row ends on a ruled line).
+ */
+export function vocabLayout(orient) {
+  const { w, h } = PAGE[orient] || PAGE.p;
+  const split = Math.round(w * S.vocabSplit), check = w - S.vocabCheck;
+  const rows = [];
+  for (let y = S.vocabTop; y + S.lined <= h - S.lined; y += S.lined) rows.push([y, y + S.lined]);
+  return { left: [0, split], right: [split, check], rows };
+}

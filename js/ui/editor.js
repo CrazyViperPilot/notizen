@@ -60,10 +60,35 @@ export async function mountEditor(el, { noteId }, ctx) {
     },
     onPageMenu: (action, value) => pageMenu(action, value),
     onAddPage: () => addPage(),
+    onQuiz: () => (quizSide ? stopQuiz() : startQuiz('right')),
   });
   const holder = h('div', { className: 'ed-surface' });
   const hint = h('div', { className: 'ed-hint', role: 'status', hidden: true, text: 'Seite wird geladen…' });
-  el.replaceChildren(toolbar.el, h('div', { className: 'ed-body' }, holder, hint));
+  // Vocabulary quiz: covers one column of the vocab pages, tapping a row reveals it.
+  let quizSide = null;
+  const quizSwap = h('button', { type: 'button', className: 'btn', onclick: () => startQuiz(quizSide === 'right' ? 'left' : 'right') });
+  const quizBar = h('div', { className: 'quiz-bar', role: 'toolbar', 'aria-label': 'Abfragen', hidden: true },
+    h('span', { className: 'quiz-title', text: 'Abfragen' }),
+    quizSwap,
+    h('button', { type: 'button', className: 'btn', text: 'Alle aufdecken', onclick: () => surface.quizAll(true) }),
+    h('button', { type: 'button', className: 'btn', text: 'Alle zudecken', onclick: () => surface.quizAll(false) }),
+    h('button', { type: 'button', className: 'btn primary', text: 'Fertig', onclick: () => stopQuiz() }));
+  el.replaceChildren(toolbar.el, h('div', { className: 'ed-body' }, holder, hint, quizBar));
+
+  function startQuiz(side) {
+    quizSide = side;
+    surface.setQuiz({ side });
+    quizSwap.textContent = side === 'right' ? 'Wörter abdecken' : 'Übersetzung abdecken';
+    quizBar.hidden = false;
+    toolbar.setQuiz(true, true);
+  }
+
+  function stopQuiz() {
+    quizSide = null;
+    surface.setQuiz(null);
+    quizBar.hidden = true;
+    toolbar.setQuiz(surface.hasVocab(), false);
+  }
 
   const surface = createSurface(holder, { fingerDraw: fingerDrawPref() });
   toolbar.setTitle(note.title);
@@ -110,6 +135,8 @@ export async function mountEditor(el, { noteId }, ctx) {
   }
 
   function refreshPageInfo() {
+    if (quizSide && !surface.hasVocab()) stopQuiz();
+    else toolbar.setQuiz(surface.hasVocab(), !!quizSide);
     const id = surface.currentPageId();
     const i = pages.findIndex((p) => p.id === id);
     toolbar.setPageInfo(i < 0 ? 0 : i + 1, pages.length, i < 0 ? null : { paper: pages[i].paper, orient: pages[i].orient });

@@ -67,3 +67,23 @@
 .tb-custom .tb-dot, .tb-custom.on .tb-dot { position: relative; z-index: 1; width: 20px; height: 20px; box-shadow: 0 0 0 2px #fff; }
 .tb-custom.on::before { inset: 5px; }
 .tb-color-input { position: fixed; left: 50%; top: 60px; width: 1px; height: 1px; opacity: 0; border: 0; padding: 0; pointer-events: none; }
+
+/* Vokabel-Abfrage: abgedeckte Zeilen */
+.nz-cover-row {
+  background: repeating-linear-gradient(135deg, #dce5f5 0 8px, #e6ecf8 8px 16px);
+  border-top: 1px solid #c3cfe6;
+  border-bottom: 1px solid #c3cfe6;
+  box-sizing: border-box;
+  transition: background-color .15s, opacity .15s;
+}
+.nz-cover-row.open { background: transparent; border-color: transparent; box-shadow: inset 3px 0 0 #8fb0ef; }
+
+.quiz-bar {
+  position: absolute; left: 50%; bottom: calc(16px + var(--safe-bottom)); transform: translateX(-50%); z-index: 20;
+  display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; align-items: center;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--shadow-lg);
+  padding: 8px; max-width: calc(100% - 24px);
+}
+.quiz-bar .quiz-title { font-weight: 600; padding: 0 8px; }
+.tb-quiz.on { background: var(--accent-soft); border-color: var(--accent); }
+.tb-quiz { font-size: 15px; padding: 0 12px; width: auto; }

@@ -14,6 +14,7 @@ import { isHexColor, PAGE, PAGE_GAP, PAGE_PAD, ZOOM_MIN, ZOOM_MAX, ERASER_RADIUS
 import { decodeStrokes, encodeStrokes, strokeId } from './codec.js';
 import { Smoother, normPressure, hitTestSegment, bbox } from './stroke.js';
 import { drawPage, drawPen, drawHighlighter, setPageTransform } from './render.js';
+import { vocabLayout } from './paper.js';
 
 const MAX_PAGE_CSS = 1100;      // max page width at zoom 1 (desktop)
 const MAX_BASE_PX = 2400;       // max base canvas width in device px
@@ -57,6 +58,8 @@ class Surface extends EventTarget {
     this._raf = 0;
     this._detailTimer = 0;
     this.detailState = null;    // {z, ox, oy} the detail canvas was rendered with
+    this.quiz = null;           // vocab quiz: {side: 'right'|'left', open: Map<pageId, Set<rowIndex>>}
+    this._tap = null;           // finger tap candidate on a quiz cover
 
     this._build();
     this._bind();
@@ -106,6 +109,27 @@ class Surface extends EventTarget {
 
   setTool(tool) {
     this.tool = { ...this.tool, ...tool };
+  }
+
+  /**
+   * Vocabulary quiz: covers one column of every vocab page; tapping a row reveals/hides it.
+   * setQuiz({side: 'right'|'left'}) starts/changes it (all rows covered), setQuiz(null) ends it.
+   */
+  setQuiz(opts) {
+    this.quiz = opts ? { side: opts.side === 'left' ? 'left' : 'right', open: new Map() } : null;
+    this._refreshCovers();
+  }
+
+  /** Reveal (true) or cover (false) all rows while quizzing. */
+  quizAll(reveal) {
+    if (!this.quiz) return;
+    this.quiz.open = new Map();
+    if (reveal) for (const P of this.pages) if (P.paper === 'vocab') this.quiz.open.set(P.id, new Set(vocabLayout(P.orient).rows.map((_, i) => i)));
+    this._refreshCovers();
+  }
+
+  hasVocab() {
+    return this.pages.some((P) => P.paper === 'vocab');
   }
 
   setFingerDraw(on) {
@@ -188,7 +212,11 @@ class Surface extends EventTarget {
     this.layer.style.cssText = 'position:absolute;inset:0;';
     this.detail = this._overlayCanvas('nz-detail');
     this.live = this._overlayCanvas('nz-live');
-    this.el.append(this.layer, this.detail, this.live);
+    // Quiz covers lie above the (sharp) detail canvas, below the live stroke.
+    this.covers = document.createElement('div');
+    this.covers.className = 'nz-covers';
+    this.covers.style.cssText = 'position:absolute;inset:0;pointer-events:none;';
+    this.el.append(this.layer, this.detail, this.covers, this.live);
     this.liveCtx = this.live.getContext('2d', { desynchronized: true }) || this.live.getContext('2d');
   }
 
@@ -309,6 +337,7 @@ class Surface extends EventTarget {
         st.width = r.w + 'px';
         st.height = r.h + 'px';
         if (!P.rendered) this.renderQueue.add(P);
+        this._placeCover(P, r);
       } else if (P.div) {
         this._releasePage(P);
       }
@@ -335,6 +364,74 @@ class Surface extends EventTarget {
     this._sizeCanvas(P);
   }
 
+  // ───── quiz covers ─────
+
+  _placeCover(P, r) {
+    if (!this.quiz || P.paper !== 'vocab') { this._removeCover(P); return; }
+    if (!P.coverEl || P.coverKey !== this._coverKey(P)) this._buildCover(P);
+    const st = P.coverEl.style;
+    st.transform = `translate3d(${r.x}px, ${r.y}px, 0)`;
+    st.width = r.w + 'px';
+    st.height = r.h + 'px';
+  }
+
+  _coverKey(P) {
+    const open = this.quiz.open.get(P.id);
+    return this.quiz.side + P.orient + ':' + (open ? [...open].sort((a, b) => a - b).join(',') : '');
+  }
+
+  _buildCover(P) {
+    this._removeCover(P);
+    const L = vocabLayout(P.orient);
+    const [x0, x1] = L[this.quiz.side];
+    const open = this.quiz.open.get(P.id) || new Set();
+    const box = document.createElement('div');
+    box.className = 'nz-cover';
+    box.style.cssText = 'position:absolute;left:0;top:0;transform-origin:0 0;';
+    L.rows.forEach(([y0, y1], i) => {
+      const row = document.createElement('div');
+      row.className = 'nz-cover-row' + (open.has(i) ? ' open' : '');
+      row.style.cssText = `position:absolute;left:${(x0 / P.w) * 100}%;width:${((x1 - x0) / P.w) * 100}%;`
+        + `top:${(y0 / P.h) * 100}%;height:${((y1 - y0) / P.h) * 100}%;`;
+      box.append(row);
+    });
+    this.covers.append(box);
+    P.coverEl = box;
+    P.coverKey = this._coverKey(P);
+  }
+
+  _removeCover(P) {
+    if (P.coverEl) P.coverEl.remove();
+    P.coverEl = null;
+    P.coverKey = null;
+  }
+
+  _refreshCovers() {
+    for (const P of this.pages) this._removeCover(P);
+    this._update();
+  }
+
+  /** Screen point on a covered quiz cell → {P, row} or null. */
+  _quizHit(pt) {
+    if (!this.quiz) return null;
+    const hit = this._pageAt(pt.x, pt.y);
+    if (!hit || hit.P.paper !== 'vocab') return null;
+    const L = vocabLayout(hit.P.orient);
+    const [x0, x1] = L[this.quiz.side];
+    if (hit.ux < x0 || hit.ux > x1) return null;
+    const row = L.rows.findIndex(([y0, y1]) => hit.uy >= y0 && hit.uy < y1);
+    return row < 0 ? null : { P: hit.P, row };
+  }
+
+  _toggleRow(q) {
+    let open = this.quiz.open.get(q.P.id);
+    if (!open) this.quiz.open.set(q.P.id, (open = new Set()));
+    if (open.has(q.row)) open.delete(q.row); else open.add(q.row);
+    this._removeCover(q.P);
+    this._update();
+    this.dispatchEvent(new CustomEvent('quiz', { detail: { pageId: q.P.id, row: q.row, open: open.has(q.row) } }));
+  }
+
   _sizeCanvas(P) {
     if (!P.canvas) return;
     const w = Math.min(MAX_BASE_PX, Math.round(P.cw * this.dpr));
@@ -344,6 +441,7 @@ class Surface extends EventTarget {
   }
 
   _releasePage(P) {
+    this._removeCover(P);
     if (P.canvas) { P.canvas.width = 0; P.canvas.height = 0; }
     if (P.div) P.div.remove();
     P.div = null; P.canvas = null; P.rendered = false;
@@ -497,6 +595,16 @@ class Surface extends EventTarget {
     const pt = this._local(e);
     if (e.pointerType === 'mouse' && e.button !== 0) return;
 
+    // Quiz: the pen (or the drawing finger/mouse) toggles a covered row instead of writing on it.
+    const quizHit = this.drawing ? null : this._quizHit(pt);
+    if (quizHit && this._isDrawPointer(e)) {
+      e.preventDefault();
+      this._toggleRow(quizHit);
+      return;
+    }
+    if (this.touches.size > 0) this._tap = null; // second finger: pinch, no tap
+    else if (quizHit) this._tap = { id: e.pointerId, x: pt.x, y: pt.y, t: e.timeStamp, q: quizHit };
+
     if (this._isDrawPointer(e) && !this.drawing) {
       const hit = this._pageAt(pt.x, pt.y);
       if (!hit) return;
@@ -557,6 +665,17 @@ class Surface extends EventTarget {
     }
     if (!this.touches.has(e.pointerId)) return;
     this.touches.delete(e.pointerId);
+    const tap = this._tap;
+    this._tap = null;
+    if (tap && tap.id === e.pointerId && e.type === 'pointerup') {
+      const pt = this._local(e);
+      // A short tap (no panning) on a cover toggles the row.
+      if (Math.hypot(pt.x - tap.x, pt.y - tap.y) < 10 && e.timeStamp - tap.t < 500) {
+        this.gesture = null;
+        this._toggleRow(tap.q);
+        return;
+      }
+    }
     this._endGesture(e.timeStamp);
   }
 

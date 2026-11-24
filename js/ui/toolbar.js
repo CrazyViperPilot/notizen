@@ -62,7 +62,7 @@ const customOf = (o, fallback) => (o && isHexColor(o.custom) ? o.custom.toLowerC
  * Returns {el, setHistory(canUndo, canRedo), setTitle(t), setPageInfo(i, n, {paper, orient}?), setTool(tool),
  *          getTool(), destroy()}
  */
-export function createToolbar({ onTool, onUndo, onRedo, onBack, onTitle, onPageMenu, onAddPage }) {
+export function createToolbar({ onTool, onUndo, onRedo, onBack, onTitle, onPageMenu, onAddPage, onQuiz = () => {} }) {
   const saved = readPrefs().tool || {};
   let kind = KINDS.includes(saved.kind) ? saved.kind : 'pen';
   const mem = {
@@ -137,13 +137,17 @@ export function createToolbar({ onTool, onUndo, onRedo, onBack, onTitle, onPageM
     type: 'button', className: 'tb-btn', title: 'Seitenmenü', 'aria-label': 'Seitenmenü',
     text: '⋯', onclick: () => openPageMenu(menuBtn),
   });
+  const quizBtn = h('button', {
+    type: 'button', className: 'tb-btn tb-quiz', title: 'Vokabeln abfragen', 'aria-label': 'Vokabeln abfragen',
+    'aria-pressed': 'false', hidden: true, text: 'Abfragen', onclick: () => onQuiz(),
+  });
   const infoEl = h('span', { className: 'tb-info', 'aria-live': 'polite' });
   const styleEl = h('div', { className: 'tb-group tb-style' });
 
   const el = h('div', { className: 'tb', role: 'toolbar', 'aria-label': 'Werkzeuge' },
     h('div', { className: 'tb-left' }, backBtn, titleBtn),
     h('div', { className: 'tb-group tb-tools' }, toolBtns),
-    h('div', { className: 'tb-group tb-right' }, undoBtn, redoBtn, addBtn, menuBtn, infoEl),
+    h('div', { className: 'tb-group tb-right' }, undoBtn, redoBtn, addBtn, quizBtn, menuBtn, infoEl),
     styleEl);
 
   function render() {
@@ -265,6 +269,12 @@ export function createToolbar({ onTool, onUndo, onRedo, onBack, onTitle, onPageM
 
   return {
     el,
+    /** Shows the "Abfragen" button (only for notes with vocabulary pages) and its on/off state. */
+    setQuiz(available, active) {
+      quizBtn.hidden = !available;
+      quizBtn.classList.toggle('on', !!active);
+      quizBtn.setAttribute('aria-pressed', active ? 'true' : 'false');
+    },
     setHistory(canUndo, canRedo) {
       undoBtn.disabled = !canUndo;
       redoBtn.disabled = !canRedo;

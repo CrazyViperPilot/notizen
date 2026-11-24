@@ -146,3 +146,14 @@ test('paper: vocab has lines, divider and tick column', () => {
     assert.ok(g.lines.length / 4 > 20);
   }
 });
+
+test('vocab layout: rows lie on the ruled lines below the heading, columns meet at the divider', async () => {
+  const { vocabLayout } = await import('../../js/ink/paper.js');
+  const L = vocabLayout('p');
+  const g = paperGeometry('vocab', 'p');
+  assert.equal(L.left[1], L.right[0]);
+  assert.equal(L.right[1], PAGE.p.w - PAPER_STYLE.vocabCheck);
+  assert.equal(L.rows[0][0], PAPER_STYLE.vocabTop);
+  const lineYs = new Set(); for (let i = 1; i < g.lines.length; i += 4) lineYs.add(g.lines[i]);
+  for (const [y0, y1] of L.rows) { assert.ok(lineYs.has(y0) && lineYs.has(y1)); }
+});

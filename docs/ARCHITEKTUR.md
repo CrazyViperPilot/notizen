@@ -346,6 +346,7 @@ Textmarker = Mittellinie `pts` mit fester Breite `HL_WIDTH`.
 createSurface(container, { readOnly = false, fingerDraw = false }) → Surface
 Surface: setPages(pages /* Page[] inkl. strokes-String */, {keepView}) · updatePage(page) · flush() · zoom() · setTool({kind: 'pen'|'highlighter'|'eraser', color, width})
          undo() · redo() · canUndo() · canRedo() · scrollToPage(id) · currentPageId() · setFingerDraw(bool) · destroy()
+         setQuiz({side: 'right'|'left'} | null) · quizAll(reveal) · hasVocab()   (Vokabel-Abfrage, Abdeckungen als DOM-Ebene über dem Detail-Canvas)
 Ereignisse (EventTarget): 'strokes' {pageId, strokes /* String */} · 'pagechange' {pageId} · 'history' {canUndo, canRedo}
 ```
 
