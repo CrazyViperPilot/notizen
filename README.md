@@ -8,7 +8,7 @@ nur lesend teilen, PDF-Export und Backup.
 - **Admin:** https://phpexpert.de/notizen/admin.html
 - **Schreib-Labor** (Stift ohne Konto ausprobieren): https://phpexpert.de/notizen/labor.html
 
-Dokumente: [PRD.md](PRD.md) (Anforderungen) · [docs/ARCHITEKTUR.md](docs/ARCHITEKTUR.md) (Technik) · [PLAN.md](PLAN.md) (Arbeitspakete, Stand)
+Dokumente: [PRD.md](PRD.md) (Anforderungen) · [docs/ARCHITEKTUR.md](docs/ARCHITEKTUR.md) (Technik) · [PLAN.md](PLAN.md) (Arbeitspakete, Stand) · [docs/SICHERHEIT.md](docs/SICHERHEIT.md) (Sicherheits-Review)
 
 ## Aufbau
 
@@ -40,4 +40,5 @@ cp config.example.php config.php                              # Zugang + Admin e
 php -S 127.0.0.1:8080 -t .                                    # App: http://127.0.0.1:8080/
 NZ_TEST_DB_USER=nz NZ_TEST_DB_PASS=nz php test/php/run.php    # PHP-Tests (Tabellenpräfix test_)
 npm test                                                      # JS-Tests
+npm run test:e2e                                              # Browser-Tests (Playwright) gegen http://127.0.0.1:8080/
 ```

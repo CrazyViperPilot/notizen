@@ -52,6 +52,7 @@ Das erste Admin-Konto kommt aus GitHub-Secrets (Abschnitt 9). Weitere Admins kan
   gewählten Ordners als **Raster mit Vorschaubildern** (erste Seite), Unterordner zuerst.
 - Beliebig tiefe **Unterordner**. Notizen können auch direkt in der obersten Ebene liegen.
 - Aktionen für Ordner und Notizen: **Neu, Umbenennen, Verschieben** (Zielordner wählen), **Löschen** (in den Papierkorb), **Teilen**.
+- **Favoriten** (★, im Kachelmenü) und **Zuletzt geöffnet** (pro Gerät) oben in der Übersicht.
 - Sortierung: Ordner alphabetisch, Notizen nach „zuletzt geändert“ (umschaltbar auf alphabetisch).
 - **Suche** über Notiztitel und Ordnernamen.
 - **Papierkorb:** Gelöschte Ordner und Notizen bleiben 30 Tage wiederherstellbar und werden danach endgültig
@@ -63,10 +64,12 @@ Das erste Admin-Konto kommt aus GitHub-Secrets (Abschnitt 9). Weitere Admins kan
 ### 6.1 Seiten und Papier
 - Eine Notiz besteht aus **A4-Seiten** (210 × 297 mm), wahlweise **hoch oder quer**, pro Seite einstellbar.
 - **Papiersorten** (pro Seite): **Blanko, Liniert** (8 mm Zeilenabstand, Rand links), **Kariert** (5 mm), **Gepunktet** (5 mm),
+  **Lineatur 1–4** (Schulhefte mit Hilfslinien, Werte anpassbar), **Rechenkästchen mit Rand**,
   **Vokabeln** (liniert, Trennlinie zwischen Wort und Übersetzung, schmale Spalte rechts zum Abhaken, darüber eine Zeile für Überschriften).
 - **Vokabeln abfragen:** Hat eine Notiz Vokabel-Seiten, zeigt die Werkzeugleiste „Abfragen“. Dann ist die Übersetzungs-Spalte
   abgedeckt (umschaltbar: die Wörter abdecken); Antippen einer Zeile mit Finger oder Stift deckt sie auf bzw. wieder zu,
-  Scrollen bleibt möglich, die Abhak-Spalte bleibt frei. „Alle aufdecken“, „Alle zudecken“, „Fertig“. Nichts davon wird gespeichert.
+  Scrollen bleibt möglich, die Abhak-Spalte bleibt frei. Abgehakte Zeilen gelten als gekonnt (bleiben offen, grün), Zähler „gekonnt: x von y“,
+  „Nächste“ fragt eine zufällige offene Vokabel ab. „Alle aufdecken“, „Alle zudecken“, „Fertig“. Nichts davon wird gespeichert.
   Papier ist weiß, Linien hellgrau bzw. hellblau.
 - Neue Notiz: Titel (Standard: Datum), Papiersorte und Ausrichtung wählen. Die Werte der letzten Notiz sind vorausgewählt.
 - **Seitenübersicht** (Miniaturen, springen, umsortieren per Ziehen, duplizieren, löschen).
@@ -82,6 +85,7 @@ Das erste Admin-Konto kommt aus GitHub-Secrets (Abschnitt 9). Weitere Admins kan
 - **Radierer**: Modus „Ganze Striche“ (löscht berührte Striche) oder „Teilweise“ (entfernt nur den berührten Teil).
   Stifte mit **Radier-Ende** oder **Seitentaste** (gedrückt halten beim Schreiben) radieren direkt, ohne Werkzeugwechsel –
   sofern der Browser die Taste meldet (Android/Windows oft ja, Apple Pencil hat keine). Die Spielwiese zeigt an, was der Stift meldet.
+- **Formen geraderücken**: Stift am Ende kurz ruhig halten → Linie, Kreis, Ellipse oder Rechteck.
 - **Lasso**: Striche einkreisen → verschieben, vergrößern/verkleinern, Farbe ändern, duplizieren, löschen.
 - **Rückgängig / Wiederholen** (pro geöffneter Notiz, bis zu 100 Schritte, gilt bis zum Schließen der Notiz).
 - Werkzeugleiste oben, kompakt, mit großen Tippflächen (mindestens 44 pt).
@@ -135,6 +139,9 @@ Das erste Admin-Konto kommt aus GitHub-Secrets (Abschnitt 9). Weitere Admins kan
 ## 8a. Spielwiese (`/notizen/labor.html`)
 - Bleibt dauerhaft: Zeichenfläche ohne Konto und Server zum Ausprobieren des Stifts (z. B. auf einem neuen Tablet) und zur Fehlersuche.
 - Vier feste Seiten (liniert, kariert, gepunktet, blanko), speichert nur lokal im Browser, kein Abgleich.
+
+## 8b. Datensicherung
+- Konto: „Backup herunterladen“ / „Backup einspielen“ (Datei `.notizen`). Admin: Gesamtsicherung aller Benutzer und Sicherung einzelner Benutzer.
 
 ## 9. Betrieb
 - Deploy per GitHub Actions (FTP) aus diesem Repo nach `phpexpert.de/notizen/` (eigener FTP-Zugang, Login startet im Web-Ordner /notizen).

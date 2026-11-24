@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "test": "node --test test/js/*.test.mjs",
-    "test:php": "php test/php/run.php"
+    "test:php": "php test/php/run.php",
+    "test:e2e": "node --test --test-concurrency=1 test/e2e/*.e2e.mjs"
   }
 }

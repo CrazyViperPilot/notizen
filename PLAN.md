@@ -90,7 +90,7 @@ Reset, Sperren, Sitzungen beenden, Löschen mit Bestätigung, Notizen einsehen (
 `manifest.json`, `sw.js`, Icons, `.github/workflows/test.yml` (Tests bei jedem Push), `.github/workflows/deploy.yml`
 (MariaDB-Service, Tests, Upload, config.php, Live-Check), `README.md`; im Repo `games`: Karte auf der Startseite + Tabellenzeile im README.
 
-### P14 – E2E, Review, Feinschliff (Opus)
+### P14 – E2E, Review, Feinschliff (Opus) ✅ (in Runde 3 als P29/P30 erledigt)
 Playwright-Tests (`test/e2e/`), Sicherheits-Review, Leistungstest (2.000 Striche/Seite, 50 Seiten), Abgleich PRD ↔ Umsetzung.
 
 ## Voraussetzungen beim Betreiber (vor dem ersten Deploy)
@@ -118,7 +118,7 @@ Verbindlich: ARCHITEKTUR Abschnitt 10. **Stand: P15–P22 erledigt (Nov 2026).**
 ---
 
 # Runde 3 (Nov 2026): Lineaturen, Vokabeltrainer, Favoriten, Formen, Datensicherung, Tests
-Verbindlich: ARCHITEKTUR Abschnitt 11. Push direkt nach `main` nach Gesamttest.
+Verbindlich: ARCHITEKTUR Abschnitt 11. **Stand: P23–P30 erledigt (Nov 2026).** Sicherheits-Review: docs/SICHERHEIT.md. Damit ist auch P14 (E2E, Review) abgeschlossen.
 
 | Paket | Inhalt | Wer |
 |---|---|---|
