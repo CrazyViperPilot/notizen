@@ -64,7 +64,7 @@ function sync_clean($kind, $d)
         $pos = isset($d['pos']) ? $d['pos'] : null;
         if (!is_int($pos) && !is_float($pos) || !is_finite((float)$pos)) fail(400, 'invalid', 'pos ungültig.');
         $c['pos'] = (float)$pos;
-        $c['paper'] = isset($d['paper']) && in_array($d['paper'], ['blank', 'lined', 'grid', 'dotted'], true) ? $d['paper'] : fail(400, 'invalid', 'Papier ungültig.');
+        $c['paper'] = isset($d['paper']) && in_array($d['paper'], ['blank', 'lined', 'grid', 'dotted', 'vocab'], true) ? $d['paper'] : fail(400, 'invalid', 'Papier ungültig.');
         $c['orient'] = isset($d['orient']) && in_array($d['orient'], ['p', 'l'], true) ? $d['orient'] : fail(400, 'invalid', 'Ausrichtung ungültig.');
         $s = isset($d['strokes']) ? $d['strokes'] : '[]';
         if (!is_string($s)) fail(400, 'invalid', 'Striche ungültig.');

@@ -62,7 +62,8 @@ Das erste Admin-Konto kommt aus GitHub-Secrets (Abschnitt 9). Weitere Admins kan
 ## 6. Editor
 ### 6.1 Seiten und Papier
 - Eine Notiz besteht aus **A4-Seiten** (210 × 297 mm), wahlweise **hoch oder quer**, pro Seite einstellbar.
-- **Papiersorten** (pro Seite): **Blanko, Liniert** (8 mm Zeilenabstand, Rand links), **Kariert** (5 mm), **Gepunktet** (5 mm).
+- **Papiersorten** (pro Seite): **Blanko, Liniert** (8 mm Zeilenabstand, Rand links), **Kariert** (5 mm), **Gepunktet** (5 mm),
+  **Vokabeln** (liniert, Trennlinie zwischen Wort und Übersetzung, schmale Spalte rechts zum Abhaken, darüber eine Zeile für Überschriften).
   Papier ist weiß, Linien hellgrau bzw. hellblau.
 - Neue Notiz: Titel (Standard: Datum), Papiersorte und Ausrichtung wählen. Die Werte der letzten Notiz sind vorausgewählt.
 - Seiten **hinzufügen** (am Ende oder nach der aktuellen Seite, übernimmt das Papier der aktuellen Seite), **löschen**,

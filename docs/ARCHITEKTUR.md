@@ -103,7 +103,7 @@ iPad (Safari / Home-Bildschirm-App)                       phpexpert.de/notizen/ 
 | `login_attempts` | `id` PK, `username` VARCHAR(64), `ip` VARCHAR(45), `at` BIGINT; Index (`username`,`at`), (`ip`,`at`) |
 | `folders` | `id` CHAR(36) PK, `user_id` FK, `parent_id` CHAR(36) NULL, `name` VARCHAR(200), `created_at`, `updated_at`, `deleted_at` NULL, `purged` TINYINT, `rev` INT, `seq` BIGINT; Index (`user_id`,`seq`) |
 | `notes` | `id` CHAR(36) PK, `user_id`, `folder_id` CHAR(36) NULL, `title` VARCHAR(200), `created_at`, `updated_at`, `deleted_at`, `purged`, `rev`, `seq`; Index (`user_id`,`seq`), (`folder_id`) |
-| `pages` | `id` CHAR(36) PK, `user_id`, `note_id` CHAR(36), `pos` DOUBLE, `paper` ENUM('blank','lined','grid','dotted'), `orient` ENUM('p','l'), `strokes` MEDIUMTEXT, `bytes` INT, `conflict` TINYINT, `created_at`, `updated_at`, `deleted_at`, `purged`, `rev`, `seq`; Index (`user_id`,`seq`), (`note_id`) |
+| `pages` | `id` CHAR(36) PK, `user_id`, `note_id` CHAR(36), `pos` DOUBLE, `paper` ENUM('blank','lined','grid','dotted','vocab'), `orient` ENUM('p','l'), `strokes` MEDIUMTEXT, `bytes` INT, `conflict` TINYINT, `created_at`, `updated_at`, `deleted_at`, `purged`, `rev`, `seq`; Index (`user_id`,`seq`), (`note_id`) |
 | `shares` | `id` PK, `owner_id`, `target_id`, `kind` ENUM('folder','note'), `item_id` CHAR(36), `created_at`; UNIQUE (`owner_id`,`target_id`,`kind`,`item_id`), Index `target_id` |
 | `admin_log` | `id` PK, `admin_id`, `action` VARCHAR(40), `target_user_id` NULL, `details` VARCHAR(500), `at` BIGINT |
 | `settings` | `k` VARCHAR(64) PK, `v` TEXT (`schema_version`, `admin_fp`) |

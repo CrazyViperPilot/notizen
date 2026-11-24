@@ -29,7 +29,7 @@ export function drawPaper(ctx, page, scale, clip = null) {
     ctx.stroke();
   }
   if (g.dots.length) {
-    const r = Math.max(3, 1.2 / scale);
+    const r = Math.min(10, Math.max(3, 1.2 / scale)); // capped: tiny previews would turn into a grey area
     ctx.fillStyle = PAPER_STYLE.dotColor;
     ctx.beginPath();
     for (let i = 0; i < g.dots.length; i += 2) {
@@ -42,8 +42,10 @@ export function drawPaper(ctx, page, scale, clip = null) {
   }
   if (g.margin) {
     ctx.beginPath();
-    ctx.moveTo(g.margin[0], g.margin[1]);
-    ctx.lineTo(g.margin[2], g.margin[3]);
+    for (let i = 0; i < g.margin.length; i += 4) {
+      ctx.moveTo(g.margin[i], g.margin[i + 1]);
+      ctx.lineTo(g.margin[i + 2], g.margin[i + 3]);
+    }
     ctx.strokeStyle = PAPER_STYLE.marginColor;
     ctx.lineWidth = lw;
     ctx.stroke();

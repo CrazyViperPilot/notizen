@@ -134,3 +134,15 @@ test('stylus eraser end / side button erase, Apple Pencil and fingers do not', a
   assert.equal(penEraser({ pointerType: 'touch', buttons: 2, button: 2 }), false);
   assert.equal(penEraser({ pointerType: 'mouse', buttons: 2, button: 2 }), false);
 });
+
+test('paper: vocab has lines, divider and tick column', () => {
+  for (const o of ['p', 'l']) {
+    const g = paperGeometry('vocab', o);
+    const { w, h } = PAGE[o];
+    assert.equal(g.margin.length, 8);
+    assert.ok(g.margin[0] > w * 0.4 && g.margin[0] < w * 0.55, 'Trennlinie etwa mittig');
+    assert.equal(g.margin[4], w - PAPER_STYLE.vocabCheck);
+    assert.equal(g.margin[3], h);
+    assert.ok(g.lines.length / 4 > 20);
+  }
+});

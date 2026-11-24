@@ -64,7 +64,9 @@ function contentOf(paper, orient, strokes) {
   }
   if (g.margin) {
     const m = g.margin;
-    ops.push(rgb(PAPER_STYLE.marginColor, 'RG'), `${num(RULE_W)} w`, `${X(m[0])} ${Y(m[1])} m ${X(m[2])} ${Y(m[3])} l S`);
+    ops.push(rgb(PAPER_STYLE.marginColor, 'RG'), `${num(RULE_W)} w`);
+    for (let i = 0; i < m.length; i += 4) ops.push(`${X(m[i])} ${Y(m[i + 1])} m ${X(m[i + 2])} ${Y(m[i + 3])} l`);
+    ops.push('S');
   }
 
   // Textmarker: Mittellinie, runder Strich, Transparenz und Multiplikation wie im Canvas

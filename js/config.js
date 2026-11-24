@@ -1,8 +1,8 @@
 // Shared constants. Page units: 0.1 mm.
 
 export const PAGE = { p: { w: 2100, h: 2970 }, l: { w: 2970, h: 2100 } };
-export const PAPERS = ['blank', 'lined', 'grid', 'dotted'];
-export const PAPER_NAMES = { blank: 'Blanko', lined: 'Liniert', grid: 'Kariert', dotted: 'Gepunktet' };
+export const PAPERS = ['blank', 'lined', 'grid', 'dotted', 'vocab'];
+export const PAPER_NAMES = { blank: 'Blanko', lined: 'Liniert', grid: 'Kariert', dotted: 'Gepunktet', vocab: 'Vokabeln' };
 
 export const PEN_COLORS = ['#1a1a1a', '#1f3a93', '#c0392b', '#1e8449', '#e67e22', '#7d3c98'];
 export const PEN_COLOR_NAMES = ['Schwarz', 'Dunkelblau', 'Rot', 'Grün', 'Orange', 'Lila'];
@@ -29,6 +29,9 @@ export const PAPER_STYLE = {
   grid: 50,
   dotted: 50,
   margin: 250,    // left margin line on lined paper
+  vocabTop: 300,  // vocab: first line (above it: room for a heading), then every `lined`
+  vocabSplit: 0.47, // vocab: divider word | translation (share of page width)
+  vocabCheck: 170,  // vocab: width of the tick column on the right
 };
 
 export const ZOOM_MIN = 1;

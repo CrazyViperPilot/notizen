@@ -331,3 +331,11 @@ function test_sync_requires_login_and_csrf()
     $a->csrf = '';
     assert_status(403, $a->post('sync_push', ['changes' => []]), 'bad_csrf');
 }
+
+function test_sync_vocab_paper()
+{
+    $a = user_client('anna');
+    $r = push($a, [ch('note', uid_(1), n_data('Englisch')), ch('page', uid_(2), p_data(uid_(1), '[]', 1000, ['paper' => 'vocab', 'orient' => 'l']))]);
+    assert_eq(['ok', 'ok'], array_column($r, 'status'));
+    assert_eq('vocab', val('SELECT paper FROM {pages} WHERE id = ?', [uid_(2)]));
+}
