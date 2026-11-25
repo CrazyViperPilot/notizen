@@ -1,7 +1,7 @@
 // Vorschaubild einer Notiz (erste Seite) als Object-URL. Cache in model.thumbs (IndexedDB, nur lokal).
 // Der Aufrufer gibt die URL mit URL.revokeObjectURL frei. Siehe docs/ARCHITEKTUR.md 3.4 und 7.1.
 
-import { PAGE } from '../config.js';
+import { pageDims } from '../config.js';
 import { decodeStrokes } from '../ink/codec.js';
 import { drawPage, setPageTransform } from '../ink/render.js';
 
@@ -10,7 +10,7 @@ let canvas = null;     // ein wiederverwendetes Offscreen-Canvas (Zeichnen und t
 
 /** Rendert eine Seite als PNG-Blob. Ohne Striche (strokes === null) nur das Papier. img: Hintergrundbild oder null. */
 function renderPage(page, img) {
-  const dims = PAGE[page.orient] || PAGE.p;
+  const dims = pageDims(page.size, page.orient);
   const w = THUMB_W;
   const hPx = Math.round((THUMB_W * dims.h) / dims.w);
   if (!canvas) canvas = document.createElement('canvas');

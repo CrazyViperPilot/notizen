@@ -536,3 +536,35 @@ Werkzeug `'pencil'` (Name „Bleistift“, Taste **b**). Strich-Typ `"b"` im For
 - **Pipette:** `pickcolor` mit `type 'b'` stellt das Werkzeug Bleistift ein. Lasso-Farbwahl färbt Stift und Bleistift (`'p'`).
 - **Glättung und Gesten** wie beim Stift (Abschnitt 11.7). Hinweis: Die Formen-Erkennung (11.4) greift beim Bleistift derzeit ebenfalls,
   obwohl 11.4 nur Stift und Textmarker nennt. Offene Entscheidung.
+
+## 13. Seitenformate, Lineal, Titelblatt, PDF/A (Runde 4, Nov 2026)
+
+### 13.1 Seitenformate
+- `pages.size ENUM('a4','a5','a3') NOT NULL DEFAULT 'a4'` (Migration 005). Sync: `size` im Datensatz; fehlt es (ältere Clients),
+  behält der Server das gespeicherte Format (neue Seite: A4). Ungültig → `rejected`/`invalid`.
+- `config.js`: `PAGE_SIZES`, `SIZE_NAMES`, `pageDims(size, orient)` → `{w, h}` in 0,1 mm, `sizeOf(page)`. `PAGE` bleibt A4.
+  Alle Stellen, die Seitenmaße brauchen (paper.js, render.js, surface.js, pdf.js, thumbs.js, pages.js, library.js), gehen über `pageDims`.
+  `paperGeometry(paper, orient, size)` und `vocabLayout(orient, size)`: Muster in echten Millimetern.
+- Surface: die breiteste Seite der Notiz füllt die Breite; gemischte Formate im echten Größenverhältnis.
+- Model: `createNote({…, size})`, `addPage(…, {paper, orient, size})`, `setPaper(id, paper, orient, size)`; Duplikat und neue Seite übernehmen das Format.
+  Backup und Admin-Export enthalten `size`.
+
+### 13.2 Lineal (`js/ui/ruler.js`, `js/ui/ruler-geom.js`)
+- Canvas `.ruler` im Surface-Container (`pointer-events: none`), Länge 300 mm × `10 · surface.viewScale()` px, Höhe 70 CSS-px.
+  Surface-Schnittstellen: `viewScale()`, Event `'view'` (nach jeder Ansichtsänderung), `setGuide({start(pt), project(pt, edge)} | null)`.
+- Finger/Maus: Capture-Listener auf `.ed-body`, schluckt nur Zeiger auf dem Lineal; der Stift geht immer an die Surface.
+- Stiftführung: `start` liefert Kante 0/1, wenn der Strich höchstens 24 px außerhalb einer Längskante beginnt; jeder Punkt des Strichs
+  wird dann senkrecht auf die Kantengerade projiziert (Stift, Bleistift, Textmarker).
+- Zustand `localStorage['notizen:ruler']` = `{x, y, angle, visible}`.
+
+### 13.3 Titelblatt (`js/export/cover.js`, `js/ui/export-dialog.js`)
+- `buildCover(template, fields, {size, orient}, renderText)` → Cover-Objekt `{size, orient, boxes, lines, texts}` (0,1 mm).
+  Texte werden im Browser mit `canvasText` bei 300 dpi als Graustufenbild gerendert (keine Schriften im PDF, deshalb PDF/A-tauglich).
+- `askPdfOptions(title, firstPage)` (Dialog) → `{pdfa, cover}` für `notePdf`. Letzte Wahl in `localStorage['notizen:export']`.
+
+### 13.4 PDF (`js/export/pdf.js`)
+- `notePdf(note, pages, {getAssetBytes, cover, pdfa})`, `buildPdf(pages, {title, images, cover, pdfa, date})`.
+  Titelblatt = erste Seite: Flächen/Linien als Vektoren, Texte als `/DeviceGray`-Bilder (FlateDecode).
+- PDF/A-2b: Kopf `%PDF-1.7`, XMP-Metadaten (`pdfaid:part 2`, `conformance B`, Titel/Datum/Producer wie im Info-Dictionary),
+  OutputIntent `GTS_PDFA1` mit selbst erzeugtem sRGB-ICC-v2-Profil (`srgbIcc()`), `/ID` im Trailer. Transparenz (Textmarker, Bleistift)
+  ist in PDF/A-2 erlaubt. CMYK-Hintergrundbilder werden im PDF/A weggelassen (der Import erzeugt nur RGB-JPEGs).

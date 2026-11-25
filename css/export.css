@@ -1,0 +1,41 @@
+/* Export-Dialog (js/ui/export-dialog.js): Titelblatt-Optionen, Vorlagenwahl, Feldraster, Vorschau, PDF/A.
+   Grundlage: css/base.css (Variablen, Dialog, Felder). Eingebunden in index.html. */
+
+.exp { display: flex; flex-direction: column; gap: 4px; }
+
+/* Schalter mit großer Tippfläche (Checkbox + Text) */
+.exp-check {
+  display: flex; align-items: center; gap: 12px; min-height: var(--tap); padding: 4px 0;
+  font-size: 16px; cursor: pointer; -webkit-user-select: none; user-select: none;
+}
+.exp-check input[type="checkbox"] { flex: 0 0 auto; width: 24px; height: 24px; margin: 0; accent-color: var(--accent); }
+.exp-hint { margin: -2px 0 8px 36px; color: var(--muted); font-size: 14px; }
+
+/* Abschnitt Titelblatt, nur sichtbar wenn der Schalter an ist */
+.exp-cover {
+  display: flex; flex-direction: column; gap: 6px;
+  padding: 8px 0 4px; border-top: 1px solid var(--line);
+}
+.exp-cover[hidden] { display: none; }
+
+/* Vorlagenwahl als Segmente */
+.exp-seg { display: flex; border: 1px solid var(--line); border-radius: var(--radius-sm); overflow: hidden; }
+.exp-seg button {
+  flex: 1 1 0; min-height: var(--tap); padding: 0 8px; border: 0; background: var(--panel);
+  font: inherit; color: var(--text); cursor: pointer; touch-action: manipulation;
+}
+.exp-seg button + button { border-left: 1px solid var(--line); }
+.exp-seg button.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+
+/* Vorschau: Seitenform mit Rand und Schatten, höchstens 240 px breit */
+.exp-preview {
+  display: block; width: min(240px, 100%); height: auto; margin: 6px auto;
+  background: #fff; border: 1px solid var(--line); border-radius: 3px; box-shadow: var(--shadow);
+}
+
+/* Felder: eine Spalte (Hochformat iPad), ab 600 px zwei Spalten */
+.exp-fields { display: flex; flex-direction: column; }
+.exp-fields .field { margin: 4px 0; }
+@media (min-width: 600px) {
+  .exp-fields { display: grid; grid-template-columns: 1fr 1fr; column-gap: 12px; }
+}

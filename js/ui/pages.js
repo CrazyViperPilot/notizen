@@ -3,7 +3,7 @@
 // Nach vorne / Nach hinten / Duplizieren / Löschen. Alle Änderungen laufen über js/model.js.
 // Benutzertexte nur über textContent bzw. Attribute (kein innerHTML).
 
-import { PAGE } from '../config.js';
+import { pageDims } from '../config.js';
 import { decodeStrokes } from '../ink/codec.js';
 import { drawPage, setPageTransform } from '../ink/render.js';
 import { h, menu, confirmDialog, toast } from './dom.js';
@@ -20,7 +20,7 @@ const edgeSpeed = (d) => Math.min(24, 4 + d / 3);
 
 /** Canvas-Maße einer Miniatur (Seitenverhältnis der Seite). */
 function canvasSize(page) {
-  const dims = PAGE[page.orient] || PAGE.p;
+  const dims = pageDims(page.size, page.orient);
   const dpr = window.devicePixelRatio || 1;
   const w = Math.round(THUMB_CSS_W * dpr);
   return { w, hPx: Math.round((w * dims.h) / dims.w), dims };
@@ -42,7 +42,7 @@ function paintPage(canvas, page, img) {
 
 /** Schlüssel für die Wiederverwendung einer gerenderten Miniatur. */
 function cacheKey(page) {
-  return [page.rev, page.lrev, page.paper, page.orient, page.bg || '',
+  return [page.rev, page.lrev, page.paper, page.orient, page.size || 'a4', page.bg || '',
     typeof page.strokes === 'string' ? 's' : '-', window.devicePixelRatio || 1].join('|');
 }
 

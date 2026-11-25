@@ -10,7 +10,7 @@
 //   - one "detail" canvas over the whole container, sharp at the current zoom (only when zoom > 1, after gestures),
 //   - one "live" canvas on top for the stroke in progress and the eraser cursor.
 
-import { isHexColor, PAGE, PAGE_GAP, PAGE_PAD, ZOOM_MIN, ZOOM_MAX, ERASER_RADIUS, UNDO_LIMIT, SAVE_DELAY } from '../config.js';
+import { isHexColor, PAGE, pageDims, PAGE_GAP, PAGE_PAD, ZOOM_MIN, ZOOM_MAX, ERASER_RADIUS, UNDO_LIMIT, SAVE_DELAY } from '../config.js';
 import { decodeStrokes, encodeStrokes, strokeId } from './codec.js';
 import { Smoother, SMOOTHING, normPressure, pencilP, altitudeOf, hitTest, hitTestSegment, bbox, eraseSplit } from './stroke.js';
 import { drawPage, drawPen, drawInk, drawHighlighter, setPageTransform } from './render.js';
@@ -94,6 +94,7 @@ class Surface extends EventTarget {
     this._raf = 0;
     this._detailTimer = 0;
     this.detailState = null;    // {z, ox, oy} the detail canvas was rendered with
+    this.guide = null;          // ruler straightedge (setGuide)
     this.quiz = null;           // vocab quiz: {side: 'right'|'left', open: Map<pageId, Set<rowIndex>>}
     this._tap = null;           // finger tap candidate on a quiz cover
 
@@ -123,10 +124,11 @@ class Surface extends EventTarget {
         this._dropHistory(P.id);
         P.rendered = false;
       }
-      if (P.paper !== row.paper || P.orient !== row.orient || (P.bg || null) !== (row.bg || null)) P.rendered = false;
+      if (P.paper !== row.paper || P.orient !== row.orient || P.size !== (row.size || 'a4') || (P.bg || null) !== (row.bg || null)) P.rendered = false;
       P.bg = row.bg || null;
       P.paper = row.paper;
       P.orient = row.orient === 'l' ? 'l' : 'p';
+      P.size = ['a5', 'a3'].includes(row.size) ? row.size : 'a4';
       this.pages.push(P);
       this.byId.set(P.id, P);
     }
@@ -142,7 +144,7 @@ class Surface extends EventTarget {
   /** Replace one page (e.g. after sync). */
   updatePage(row) {
     if (!this.byId.has(row.id)) return;
-    this.setPages(this.pages.map((P) => (P.id === row.id ? row : { id: P.id, paper: P.paper, orient: P.orient, bg: P.bg, strokes: P.raw })), { keepView: true });
+    this.setPages(this.pages.map((P) => (P.id === row.id ? row : { id: P.id, paper: P.paper, orient: P.orient, size: P.size, bg: P.bg, strokes: P.raw })), { keepView: true });
   }
 
   setTool(tool) {
@@ -164,7 +166,7 @@ class Surface extends EventTarget {
     if (!this.quiz) return;
     this.quiz.current = null;
     this.quiz.open = new Map();
-    if (reveal) for (const P of this.pages) if (P.paper === 'vocab') this.quiz.open.set(P.id, new Set(vocabLayout(P.orient).rows.map((_, i) => i)));
+    if (reveal) for (const P of this.pages) if (P.paper === 'vocab') this.quiz.open.set(P.id, new Set(vocabLayout(P.orient, P.size).rows.map((_, i) => i)));
     this._refreshCovers();
   }
 
@@ -273,7 +275,7 @@ class Surface extends EventTarget {
     this.quiz.asked.add(P.id + ':' + i);
     const open = this.quiz.open.get(P.id);
     if (open) open.delete(i);
-    const [y0] = vocabLayout(P.orient).rows[i];
+    const [y0] = vocabLayout(P.orient, P.size).rows[i];
     this._stopInertia();
     this.oy = (P.y + y0 * this.k) * this.z - this.H / 3;
     this._clamp();
@@ -344,6 +346,15 @@ class Surface extends EventTarget {
   currentPageId() { return this.currentId; }
 
   zoom() { return this.z; }
+
+  /** CSS px per page unit (0.1 mm) at the current zoom: 1 mm = 10 · viewScale() px. */
+  viewScale() { return this.k * this.z; }
+
+  /**
+   * Straightedge for the pen (ruler): guide = {start(pt) → edge|null, project(pt, edge) → {x, y}} with points in CSS px
+   * relative to the container, or null. A pen stroke that starts where start() returns an edge is projected onto it.
+   */
+  setGuide(guide) { this.guide = guide && typeof guide.start === 'function' && typeof guide.project === 'function' ? guide : null; }
 
   /** Emit pending 'strokes' events now (call before leaving the editor). */
   flush() {
@@ -438,13 +449,15 @@ class Surface extends EventTarget {
   // ───────────────────────── layout & view ─────────────────────────
 
   _layout() {
-    let maxW = PAGE.p.w;
-    for (const P of this.pages) maxW = Math.max(maxW, PAGE[P.orient].w);
+    // Die breiteste Seite füllt die Breite (eine reine A5-Notiz also ebenso wie eine A4-Notiz), gemischte Formate im echten Größenverhältnis.
+    let maxW = 0;
+    for (const P of this.pages) maxW = Math.max(maxW, pageDims(P.size, P.orient).w);
+    if (!maxW) maxW = PAGE.p.w;
     const avail = Math.max(100, this.W - 2 * PAGE_PAD);
     this.k = Math.min(avail, MAX_PAGE_CSS) / maxW;
     let y = PAGE_PAD;
     for (const P of this.pages) {
-      const { w, h } = PAGE[P.orient];
+      const { w, h } = pageDims(P.size, P.orient);
       P.w = w; P.h = h;
       P.cw = w * this.k; P.ch = h * this.k;
       P.x = (this.W - P.cw) / 2;
@@ -517,6 +530,7 @@ class Surface extends EventTarget {
     this._placeDetail();
     this._placeSelection();
     this._schedule();
+    this.dispatchEvent(new CustomEvent('view'));
   }
 
   _createPage(P) {
@@ -671,7 +685,7 @@ class Surface extends EventTarget {
   /** Per row of a vocab page: does the word/translation area contain ink (filled), is the tick cell inked (known)? */
   _vocabRows(P) {
     if (P._vr && P._vr.strokes === P.strokes && P._vr.n === P.strokes.length && P._vr.ver === P._ver) return P._vr;
-    const L = vocabLayout(P.orient);
+    const L = vocabLayout(P.orient, P.size);
     const n = L.rows.length;
     const filled = new Array(n).fill(false), known = new Array(n).fill(false);
     const tickX = L.right[1];
@@ -693,13 +707,13 @@ class Surface extends EventTarget {
   _coverKey(P) {
     const open = this.quiz.open.get(P.id);
     const s = this._vocabRows(P);
-    return this.quiz.side + P.orient + ':' + (open ? [...open].sort((a, b) => a - b).join(',') : '')
+    return this.quiz.side + P.orient + P.size + ':' + (open ? [...open].sort((a, b) => a - b).join(',') : '')
       + '|' + s.filled.map((f, i) => (s.known[i] ? 'k' : f ? 'f' : '-')).join('') + '|' + (this.quiz.flash || '');
   }
 
   _buildCover(P) {
     this._removeCover(P);
-    const L = vocabLayout(P.orient);
+    const L = vocabLayout(P.orient, P.size);
     const [x0, x1] = L[this.quiz.side];
     const open = this.quiz.open.get(P.id) || new Set();
     const s = this._vocabRows(P);
@@ -736,7 +750,7 @@ class Surface extends EventTarget {
     if (!this.quiz) return null;
     const hit = this._pageAt(pt.x, pt.y);
     if (!hit || hit.P.paper !== 'vocab') return null;
-    const L = vocabLayout(hit.P.orient);
+    const L = vocabLayout(hit.P.orient, hit.P.size);
     const [x0, x1] = L[this.quiz.side];
     if (hit.ux < x0 || hit.ux > x1) return null;
     const row = L.rows.findIndex(([y0, y1]) => hit.uy >= y0 && hit.uy < y1);
@@ -757,7 +771,7 @@ class Surface extends EventTarget {
 
   /** Green check mark in the tick cell of a vocab row (page units); same stroke format as handwriting. */
   _tickStroke(P, row) {
-    const L = vocabLayout(P.orient);
+    const L = vocabLayout(P.orient, P.size);
     const [y0, y1] = L.rows[row];
     const x0 = L.right[1], x1 = P.w;
     const w = x1 - x0, h = y1 - y0;
@@ -1222,6 +1236,7 @@ class Surface extends EventTarget {
       eraseMode: this.tool.mode === 'part' ? 'part' : 'stroke', before: kind === 'eraser' && this.tool.mode === 'part' ? P.strokes.map(snap) : null,
       smoother: new Smoother(SMOOTHING[this.smoothing] || SMOOTHING.normal), drawn: 0, lastScreen: pt,
       erased: [], lastU: null, splitChanged: false,
+      edge: null,
       holdPt: null, holdTimer: 0, snapped: null, snapDrawn: false,
       stroke: kind === 'eraser' || kind === 'lasso' ? null : {
         id: strokeId(), type: kind === 'highlighter' ? 'h' : kind === 'pencil' ? 'b' : 'p',
@@ -1230,13 +1245,21 @@ class Surface extends EventTarget {
     };
     // Bleistift: live deckend zeichnen (schrittweise, schnell), die Live-Ebene als Ganzes halbtransparent anzeigen
     this.live.style.opacity = kind === 'pencil' ? String(PENCIL_ALPHA) : '';
+    // Lineal: Stift-, Bleistift- und Textmarker-Striche, die an seiner Kante beginnen, laufen entlang der Kante.
+    if (this.guide && this.drawing.stroke) {
+      try { this.drawing.edge = this.guide.start(pt); } catch { this.drawing.edge = null; }
+      if (this.drawing.edge === undefined) this.drawing.edge = null;
+    }
     this._addSample(e);
     this._schedule();
   }
 
   _addSample(e) {
     const d = this.drawing;
-    const pt = this._local(e);
+    let pt = this._local(e);
+    if (d.edge != null && this.guide) {
+      try { const q = this.guide.project(pt, d.edge); if (q && Number.isFinite(q.x) && Number.isFinite(q.y)) pt = q; } catch { /* Lineal weg */ }
+    }
     d.lastScreen = pt;
     const hit = this._pageAt(pt.x, pt.y, d.P);
     const p = normPressure(e.pressure, e.pointerType);

@@ -3,7 +3,7 @@
 // Everything user-provided goes through textContent / attributes (no innerHTML).
 // Bleistift (kind 'pencil') hat wie der Stift Farben und 3 Stärken; seine Striche werden als Typ 'b' gespeichert.
 
-import { PEN_COLORS, PEN_COLOR_NAMES, PEN_WIDTHS, HL_COLORS, HL_COLOR_NAMES, PAPERS, PAPER_NAMES, isHexColor, DEFAULT_CUSTOM_COLOR, DEFAULT_CUSTOM_HL_COLOR } from '../config.js';
+import { PEN_COLORS, PEN_COLOR_NAMES, PEN_WIDTHS, HL_COLORS, HL_COLOR_NAMES, PAPERS, PAPER_NAMES, PAGE_SIZES, SIZE_NAMES, isHexColor, DEFAULT_CUSTOM_COLOR, DEFAULT_CUSTOM_HL_COLOR } from '../config.js';
 import { h, menu, promptText } from './dom.js';
 import { fullscreenSupported, isFullscreen, toggleFullscreen, onFullscreenChange } from './fullscreen.js';
 
@@ -22,6 +22,7 @@ const ICONS = {
   lasso: [{ d: 'M12 4c4.4 0 8 2.2 8 5s-3.6 5-8 5-8-2.2-8-5 3.6-5 8-5z', dash: true }, { d: 'M7 13c-1 2 0 4 2 4.5s2.5 2 1.5 3.5' }],
   fsOn: [{ d: 'M4 9V4h5' }, { d: 'M15 4h5v5' }, { d: 'M20 15v5h-5' }, { d: 'M9 20H4v-5' }],
   fsOff: [{ d: 'M9 4v5H4' }, { d: 'M15 4v5h5' }, { d: 'M20 15h-5v5' }, { d: 'M4 15h5v5' }],
+  ruler: [{ d: 'M3 8.5h18v7H3z' }, { d: 'M6 15.5v-3M9 15.5v-2M12 15.5v-3M15 15.5v-2M18 15.5v-3' }],
 };
 
 function icon(kind) {
@@ -63,14 +64,15 @@ const hlColorOf = (v) => colorOf(v, HL_COLORS.length);
 const customOf = (o, fallback) => (o && isHexColor(o.custom) ? o.custom.toLowerCase() : fallback);
 
 /**
- * createToolbar({onTool, onUndo, onRedo, onBack, onTitle, onPageMenu, onAddPage})
+ * createToolbar({onTool, onUndo, onRedo, onBack, onTitle, onPageMenu, onAddPage, onQuiz, onRuler})
  *   onTool({kind, color, width})   — tool, color index and width index changed
  *   onTitle(newTitle)              — user renamed the note (dialog already confirmed)
- *   onPageMenu(action, value)      — 'paper' (value: paper code), 'orient' ('p'|'l'), 'pdf', 'delete'
- * Returns {el, setHistory(canUndo, canRedo), setTitle(t), setPageInfo(i, n, {paper, orient}?), setTool(tool),
- *          getTool(), destroy()}
+ *   onPageMenu(action, value)      — 'paper' (value: paper code), 'orient' ('p'|'l'), 'size' ('a4'|'a5'|'a3'), 'pdf', 'delete'
+ *   onRuler()                      — Lineal-Knopf oder Taste r (Editor schaltet das Lineal um und ruft setRuler auf)
+ * Returns {el, setHistory(canUndo, canRedo), setTitle(t), setPageInfo(i, n, {paper, orient, size}?), setTool(tool),
+ *          setQuiz(available, active), setRuler(on), getTool(), destroy()}
  */
-export function createToolbar({ onTool, onUndo, onRedo, onBack, onTitle, onPageMenu, onAddPage, onQuiz = () => {} }) {
+export function createToolbar({ onTool, onUndo, onRedo, onBack, onTitle, onPageMenu, onAddPage, onQuiz = () => {}, onRuler = () => {} }) {
   const saved = readPrefs().tool || {};
   let kind = KINDS.includes(saved.kind) ? saved.kind : 'pen';
   const mem = {
@@ -164,6 +166,11 @@ export function createToolbar({ onTool, onUndo, onRedo, onBack, onTitle, onPageM
     type: 'button', className: 'tb-btn tb-fs', hidden: !fullscreenSupported(), 'aria-pressed': 'false',
     onclick: () => toggleFullscreen(),
   });
+  // Lineal (Taste r): über der Schreibfläche, Zustand kommt vom Editor über setRuler()
+  const rulerBtn = h('button', {
+    type: 'button', className: 'tb-btn tb-ruler', title: 'Lineal (Taste R)', 'aria-label': 'Lineal',
+    'aria-pressed': 'false', onclick: () => onRuler(),
+  }, icon('ruler'));
   const renderFs = () => {
     const on = isFullscreen();
     const label = on ? 'Vollbild beenden' : 'Vollbild';
@@ -180,7 +187,7 @@ export function createToolbar({ onTool, onUndo, onRedo, onBack, onTitle, onPageM
   const el = h('div', { className: 'tb', role: 'toolbar', 'aria-label': 'Werkzeuge' },
     h('div', { className: 'tb-left' }, backBtn, titleBtn),
     h('div', { className: 'tb-group tb-tools' }, toolBtns),
-    h('div', { className: 'tb-group tb-right' }, undoBtn, redoBtn, addBtn, quizBtn, fsBtn, menuBtn, infoEl),
+    h('div', { className: 'tb-group tb-right' }, undoBtn, redoBtn, addBtn, quizBtn, fsBtn, rulerBtn, menuBtn, infoEl),
     styleEl);
 
   function render() {
@@ -277,6 +284,11 @@ export function createToolbar({ onTool, onUndo, onRedo, onBack, onTitle, onPageM
       icon: p && p.orient === code ? '✓' : ' ',
       onSelect: () => onPageMenu('orient', code),
     }));
+    const sizeItems = PAGE_SIZES.map((code) => ({
+      label: 'Format: ' + SIZE_NAMES[code],
+      icon: p && (p.size || 'a4') === code ? '✓' : ' ',
+      onSelect: () => onPageMenu('size', code),
+    }));
     menu(anchor, [
       { label: 'Seitenübersicht', icon: '▦', onSelect: () => onPageMenu('overview') },
       { label: 'Foto oder PDF einfügen…', icon: '🖼', onSelect: () => onPageMenu('import') },
@@ -284,6 +296,8 @@ export function createToolbar({ onTool, onUndo, onRedo, onBack, onTitle, onPageM
       ...paperItems,
       'sep',
       ...orientItems,
+      'sep',
+      ...sizeItems,
       'sep',
       { label: 'Als PDF exportieren', icon: ' ', onSelect: () => onPageMenu('pdf') },
       { label: 'Seite duplizieren', icon: ' ', onSelect: () => onPageMenu('duplicate') },
@@ -310,6 +324,7 @@ export function createToolbar({ onTool, onUndo, onRedo, onBack, onTitle, onPageM
     else if (key === 'h') selectKind('highlighter');
     else if (key === 'e') selectKind('eraser');
     else if (key === 'l') selectKind('lasso');
+    else if (key === 'r') onRuler();
     else return;
     e.preventDefault();
   }
@@ -324,6 +339,11 @@ export function createToolbar({ onTool, onUndo, onRedo, onBack, onTitle, onPageM
       quizBtn.hidden = !available;
       quizBtn.classList.toggle('on', !!active);
       quizBtn.setAttribute('aria-pressed', active ? 'true' : 'false');
+    },
+    /** Lineal-Knopf: an/aus (aria-pressed). */
+    setRuler(on) {
+      rulerBtn.classList.toggle('on', !!on);
+      rulerBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
     },
     setHistory(canUndo, canRedo) {
       undoBtn.disabled = !canUndo;

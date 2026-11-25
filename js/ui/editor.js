@@ -9,6 +9,7 @@ import { api } from '../api.js';
 import { createSurface } from '../ink/surface.js';
 import { decodeStrokes, encodeStrokes } from '../ink/codec.js';
 import { createToolbar } from './toolbar.js';
+import { createRuler } from './ruler.js';
 import { h, toast, confirmDialog, dialog } from './dom.js';
 import { PEN_COLORS, PEN_COLOR_NAMES, HL_COLORS, HL_COLOR_NAMES } from '../config.js';
 
@@ -70,6 +71,7 @@ export async function mountEditor(el, { noteId }, ctx) {
     onPageMenu: (action, value) => pageMenu(action, value),
     onAddPage: () => addPage(),
     onQuiz: () => (quizSide ? stopQuiz() : startQuiz('right')),
+    onRuler: () => { ruler.toggle(); toolbar.setRuler(ruler.isVisible()); },
   });
   const holder = h('div', { className: 'ed-surface' });
   const hint = h('div', { className: 'ed-hint', role: 'status', hidden: true, text: 'Seite wird geladen…' });
@@ -201,6 +203,9 @@ export async function mountEditor(el, { noteId }, ctx) {
   toolbar.setTitle(note.title);
   model.noteOpened(noteId);
   surface.setTool(toolbar.getTool());
+  // Lineal: nur im Editor. Zustand (Lage, Winkel, an/aus) aus localStorage 'notizen:ruler'.
+  const ruler = createRuler(holder, surface);
+  toolbar.setRuler(ruler.isVisible());
 
   // ───── state ─────
   let pages = [];                       // model rows in page order
@@ -248,7 +253,7 @@ export async function mountEditor(el, { noteId }, ctx) {
     else toolbar.setQuiz(surface.hasVocab(), !!quizSide);
     const id = surface.currentPageId();
     const i = pages.findIndex((p) => p.id === id);
-    toolbar.setPageInfo(i < 0 ? 0 : i + 1, pages.length, i < 0 ? null : { paper: pages[i].paper, orient: pages[i].orient });
+    toolbar.setPageInfo(i < 0 ? 0 : i + 1, pages.length, i < 0 ? null : { paper: pages[i].paper, orient: pages[i].orient, size: pages[i].size || 'a4' });
   }
 
   async function reloadPages(initial = false) {
@@ -276,6 +281,7 @@ export async function mountEditor(el, { noteId }, ctx) {
       id: p.id,
       paper: p.paper,
       orient: p.orient,
+      size: p.size || 'a4',
       bg: p.bg || null,
       strokes: merged.has(p.id) ? merged.get(p.id) : (typeof p.strokes === 'string' ? p.strokes : '[]'),
     }));
@@ -328,6 +334,7 @@ export async function mountEditor(el, { noteId }, ctx) {
       const page = await model.addPage(noteId, cur ? cur.id : null, {
         paper: cur ? cur.paper : 'lined',
         orient: cur ? cur.orient : 'p',
+        size: cur && cur.size ? cur.size : 'a4',
       });
       await reloadPages();
       surface.scrollToPage(page.id);
@@ -353,13 +360,14 @@ export async function mountEditor(el, { noteId }, ctx) {
         if (copy) surface.scrollToPage(copy.id);
         return;
       }
-      if (action === 'paper' || action === 'orient') {
+      if (action === 'paper' || action === 'orient' || action === 'size') {
         if (typeof cur.strokes !== 'string') { toast('Die Seite wird noch geladen.'); return; }
         const paper = action === 'paper' ? value : cur.paper;
         const orient = action === 'orient' ? value : cur.orient;
-        if (paper === cur.paper && orient === cur.orient) return;
+        const size = action === 'size' ? value : (cur.size || 'a4');
+        if (paper === cur.paper && orient === cur.orient && size === (cur.size || 'a4')) return;
         await settle();
-        await model.setPaper(cur.id, paper, orient);
+        await model.setPaper(cur.id, paper, orient, size);
         await reloadPages();
         return;
       }
@@ -425,9 +433,9 @@ export async function mountEditor(el, { noteId }, ctx) {
   }
 
   async function exportPdf() {
-    let pdf, save;
+    let pdf, save, exp;
     try {
-      [pdf, save] = await Promise.all([import('../export/pdf.js'), import('../export/save.js')]);
+      [pdf, save, exp] = await Promise.all([import('../export/pdf.js'), import('../export/save.js'), import('./export-dialog.js')]);
     } catch (e) {
       console.warn(e);
       toast('PDF-Export kommt bald');
@@ -441,6 +449,8 @@ export async function mountEditor(el, { noteId }, ctx) {
         return;
       }
       const n = await model.getNote(noteId);
+      const opts = await exp.askPdfOptions(n.title, list[0] || null);   // Titelblatt, PDF/A
+      if (!opts) return;
       // Hintergrundbilder: lokal, sonst vom Server; nicht ladbar → Seite ohne Bild
       const getAssetBytes = async (id) => {
         const a = await model.getAsset(id);
@@ -452,7 +462,7 @@ export async function mountEditor(el, { noteId }, ctx) {
           return null;
         }
       };
-      const blob = await pdf.notePdf(n, list, { getAssetBytes });
+      const blob = await pdf.notePdf(n, list, { getAssetBytes, cover: opts.cover, pdfa: opts.pdfa });
       await save.saveFile(blob, fileName(n.title));
     } catch (e) {
       console.error(e);
@@ -467,6 +477,7 @@ export async function mountEditor(el, { noteId }, ctx) {
     console.error(e);
     model.off('change', onModelChange);
     document.removeEventListener('keydown', onSelKey);
+    ruler.destroy();
     toolbar.destroy();
     surface.destroy();
     el.replaceChildren(h('div', { style: { padding: '24px' } },
@@ -482,6 +493,7 @@ export async function mountEditor(el, { noteId }, ctx) {
     clearTimeout(reloadTimer);
     model.off('change', onModelChange);
     document.removeEventListener('keydown', onSelKey);
+    ruler.destroy();
     toolbar.destroy();
     surface.destroy();
     el.replaceChildren();

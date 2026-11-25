@@ -58,6 +58,19 @@
 }
 .ed-hint[hidden] { display: none; }
 
+/* Lineal (js/ui/ruler.js): transparent über den Seitenflächen; z 4 liegt unter Hinweis (5), Auswahlleiste (15) und Abfragen (20).
+   Der Stift schreibt durch (pointer-events none); Position und Drehung setzt der Code per transform. */
+.ruler {
+  position: absolute; left: 0; top: 0; z-index: 4; pointer-events: none; touch-action: none;
+  transform-origin: 50% 50%; border-radius: 6px; box-shadow: 0 1px 4px rgba(20, 30, 50, .18);
+}
+.ruler[hidden] { display: none; }
+.ruler-angle {
+  position: absolute; left: 0; top: 0; z-index: 6; pointer-events: none; padding: 4px 12px; border-radius: 14px;
+  background: rgba(29, 35, 43, .8); color: #fff; font-size: 16px; font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.ruler-angle[hidden] { display: none; }
+
 /* Eigene Farbe: Farbpunkt mit Regenbogen-Ring */
 .tb-custom { position: relative; }
 .tb-custom::before {

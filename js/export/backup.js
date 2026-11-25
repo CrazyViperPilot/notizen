@@ -99,7 +99,7 @@ export async function exportAllWithInfo(model) {
         if (assetResult.get(p.bg)) bg = p.bg;
       }
       pages.push({
-        id: p.id, note_id: p.note_id, pos: p.pos, paper: p.paper, orient: p.orient,
+        id: p.id, note_id: p.note_id, pos: p.pos, paper: p.paper, orient: p.orient, size: p.size || 'a4',
         strokes: p.strokes, bg, created_at: p.created_at, updated_at: p.updated_at,
       });
     }
@@ -242,12 +242,13 @@ export async function importBackup(model, file) {
       const sp = list[i];
       const paper = PAPERS.includes(sp.paper) ? sp.paper : 'lined';
       const orient = sp.orient === 'l' ? 'l' : 'p';
+      const size = ['a4', 'a5', 'a3'].includes(sp.size) ? sp.size : 'a4';
       let page;
       if (i === 0) {
         page = last;
-        await model.setPaper(page.id, paper, orient);
+        await model.setPaper(page.id, paper, orient, size);
       } else {
-        page = await model.addPage(note.id, last.id, { paper, orient });
+        page = await model.addPage(note.id, last.id, { paper, orient, size });
         last = page;
       }
       await model.saveStrokes(page.id, sp.strokes);

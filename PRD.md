@@ -62,7 +62,8 @@ Das erste Admin-Konto kommt aus GitHub-Secrets (Abschnitt 9). Weitere Admins kan
 
 ## 6. Editor
 ### 6.1 Seiten und Papier
-- Eine Notiz besteht aus **A4-Seiten** (210 × 297 mm), wahlweise **hoch oder quer**, pro Seite einstellbar.
+- Eine Notiz besteht aus Seiten im Format **DIN A4** (210 × 297 mm, Standard), **DIN A5** (148 × 210 mm) oder **DIN A3** (297 × 420 mm),
+  wahlweise **hoch oder quer**, beides pro Seite einstellbar (Seitenmenü „Format“). Papiermuster bleiben in echten Millimetern.
 - **Papiersorten** (pro Seite): **Blanko, Liniert** (8 mm Zeilenabstand, Rand links), **Kariert** (5 mm), **Gepunktet** (5 mm),
   **Lineatur 1–4** (Schulhefte mit Hilfslinien, Werte anpassbar), **Rechenkästchen mit Rand**,
   **Vokabeln** (liniert, Trennlinie zwischen Wort und Übersetzung, schmale Spalte rechts zum Abhaken, darüber eine Zeile für Überschriften).
@@ -72,7 +73,7 @@ Das erste Admin-Konto kommt aus GitHub-Secrets (Abschnitt 9). Weitere Admins kan
   „Nächste“ fragt eine zufällige offene Vokabel ab. Nach dem Aufdecken antwortet man mit „✓ Gewusst“ (setzt automatisch den Haken)
   oder „✗ Nicht gewusst“ (wieder zugedeckt, kommt später erneut); danach geht es automatisch weiter. „Alle aufdecken“, „Alle zudecken“, „Fertig“. Nichts davon wird gespeichert.
   Papier ist weiß, Linien hellgrau bzw. hellblau.
-- Neue Notiz: Titel (Standard: Datum), Papiersorte und Ausrichtung wählen. Die Werte der letzten Notiz sind vorausgewählt.
+- Neue Notiz: Titel (Standard: Datum), Papiersorte, Ausrichtung und Format wählen. Die Werte der letzten Notiz sind vorausgewählt.
 - **Seitenübersicht** (Miniaturen, springen, umsortieren per Ziehen, duplizieren, löschen).
 - **Foto oder PDF einfügen** (z. B. Arbeitsblatt abfotografieren): jede Bild-/PDF-Seite wird eine Seite mit dem Bild als Hintergrund, darauf schreiben.
 - Seiten **hinzufügen** (am Ende oder nach der aktuellen Seite, übernimmt das Papier der aktuellen Seite), **löschen**,
@@ -104,14 +105,23 @@ Das erste Admin-Konto kommt aus GitHub-Secrets (Abschnitt 9). Weitere Admins kan
 - Die Linie folgt dem Stift ohne spürbare Verzögerung, die Darstellung ist auch beim Zoomen scharf.
 - Die Linien werden leicht geglättet, ohne die Handschrift zu verfälschen.
 
+### 6.3a Lineal
+- Transparentes **Lineal** (30 cm, mm- und cm-Skala im Maßstab der Seite) über der Schreibfläche, ein- und ausblendbar
+  (Knopf „Lineal“, Taste **r**). Mit Finger/Maus **verschieben**, mit zwei Fingern oder dem Dreh-Griff **drehen**
+  (rastet bei 0°/45°/90° ein, Doppeltipp = 0°). Ein Stift-Strich, der an einer Längskante beginnt, läuft gerade an der Kante entlang.
+  Lage, Winkel und an/aus werden pro Gerät gemerkt.
+
 ### 6.4 Speichern
 - **Automatisch**, ohne Speichern-Knopf. Lokal spätestens 1 s nach dem letzten Strich, auf dem Server
   (falls online) spätestens nach ein paar Sekunden.
 - Schließen, App-Wechsel oder Akku leer dürfen höchstens den gerade gezeichneten Strich kosten.
 
 ### 6.5 Export
-- **PDF-Export** einer Notiz: Vektor-PDF in A4 mit Papierhintergrund, über das Teilen-Menü von iPadOS
-  (Dateien, AirDrop, Mail).
+- **PDF-Export** einer Notiz: Vektor-PDF im Format der Seiten mit Papierhintergrund, über das Teilen-Menü von iPadOS
+  (Dateien, AirDrop, Mail). Vor dem Export ein Dialog:
+  - **Titelblatt** aus einer Vorlage voranstellen („Klassisch“, „Schulheft“, „Schlicht“) mit Feldern (Titel, Untertitel, Name, Datum,
+    Fach, Klasse, Schuljahr je nach Vorlage) und Vorschau; Format wie die erste Seite. Die letzte Wahl wird gemerkt.
+  - **PDF/A** (PDF/A-2b, Archivformat) wahlweise.
 - **Backup**: Export aller eigenen Notizen als eine Datei (`.notizen`) und **Import** einer solchen Datei.
   Importierte Inhalte landen als Kopie in einem neuen Ordner „Import <Datum>“.
 

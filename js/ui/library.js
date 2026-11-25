@@ -4,7 +4,7 @@
 
 import { h, toast, promptText, confirmDialog, dialog, menu, relTime } from './dom.js';
 import { noteThumb } from './thumbs.js';
-import { PAGE, PAPERS, PAPER_NAMES } from '../config.js';
+import { PAGE, PAPERS, PAPER_NAMES, PAGE_SIZES, SIZE_NAMES, pageDims } from '../config.js';
 import { drawPaper, setPageTransform } from '../ink/render.js';
 
 const PREFS_KEY = 'notizen:prefs';
@@ -85,8 +85,8 @@ function sortNotes(list, sort) {
 }
 
 /** Vorschau eines Papiers (Muster wie im Editor) auf ein kleines Canvas. */
-function drawPreview(cv, paper, orient) {
-  const dims = PAGE[orient] || PAGE.p;
+function drawPreview(cv, paper, orient, size = 'a4') {
+  const dims = pageDims(size, orient);
   const L = 84;                                   // CSS-Länge der langen Seite
   const S = Math.round((L * PAGE.p.w) / PAGE.p.h); // kurze Seite (59)
   const cssW = orient === 'l' ? L : S;
@@ -102,7 +102,7 @@ function drawPreview(cv, paper, orient) {
   const scale = Math.min(w / dims.w, hPx / dims.h);
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   setPageTransform(ctx, scale);
-  drawPaper(ctx, { paper, orient }, scale);
+  drawPaper(ctx, { paper, orient, size }, scale);
 }
 
 /** Lang gedrückt halten oder Rechtsklick. Tippen ruft onTap auf, sofern kein Langdruck stattfand. */
@@ -581,17 +581,24 @@ export async function mountLibrary(el, params, ctx) {
     const sel = {
       paper: PAPERS.includes(prefs0.paper) ? prefs0.paper : 'lined',
       orient: prefs0.orient === 'l' ? 'l' : 'p',
+      size: PAGE_SIZES.includes(prefs0.size) ? prefs0.size : 'a4',
     };
     const input = h('input', { className: 'input', placeholder: today(), maxLength: 200, autocomplete: 'off',
       autocapitalize: 'sentences', 'aria-label': 'Titel' });
     const paperBtns = new Map();
     const orientBtns = new Map();
+    const sizeBtns = new Map();
     const mark = () => {
       for (const [p, { b, cv }] of paperBtns) {
         const on = p === sel.paper;
         b.classList.toggle('on', on);
         b.setAttribute('aria-checked', String(on));
-        drawPreview(cv, p, sel.orient);
+        drawPreview(cv, p, sel.orient, sel.size);
+      }
+      for (const [z, b] of sizeBtns) {
+        const on = z === sel.size;
+        b.classList.toggle('on', on);
+        b.setAttribute('aria-checked', String(on));
       }
       for (const [o, b] of orientBtns) {
         const on = o === sel.orient;
@@ -614,19 +621,26 @@ export async function mountLibrary(el, params, ctx) {
         orientBtns.set(o, b);
         return b;
       }));
+    const sizeSeg = h('div', { className: 'seg', role: 'radiogroup', 'aria-label': 'Format' },
+      PAGE_SIZES.map((z) => {
+        const b = h('button', { type: 'button', role: 'radio', text: SIZE_NAMES[z], onclick: () => { sel.size = z; mark(); } });
+        sizeBtns.set(z, b);
+        return b;
+      }));
     mark();
     const choice = await dialog({
       title: 'Neue Notiz',
       body: h('div', { className: 'new-note' },
         h('label', { className: 'field' }, h('span', { text: 'Titel' }), input),
         h('div', { className: 'field' }, h('span', { text: 'Papier' }), paperGrid),
-        h('div', { className: 'field' }, h('span', { text: 'Ausrichtung' }), orientSeg)),
+        h('div', { className: 'field' }, h('span', { text: 'Ausrichtung' }), orientSeg),
+        h('div', { className: 'field' }, h('span', { text: 'Format' }), sizeSeg)),
       actions: [{ label: 'Abbrechen', value: null }, { label: 'Anlegen', value: 'ok', primary: true }],
     });
     if (choice !== 'ok') return;
     try {
-      const note = await model.createNote({ title: input.value, folderId: st.folderId, paper: sel.paper, orient: sel.orient });
-      writePrefs({ paper: sel.paper, orient: sel.orient });
+      const note = await model.createNote({ title: input.value, folderId: st.folderId, paper: sel.paper, orient: sel.orient, size: sel.size });
+      writePrefs({ paper: sel.paper, orient: sel.orient, size: sel.size });
       ctx.navigate('#/n/' + note.id);
     } catch (e) { fail(e); }
   }

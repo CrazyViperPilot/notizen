@@ -6,7 +6,7 @@ import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { inflateSync } from 'node:zlib';
-import { buildPdf, notePdf, jpegInfo } from '../../js/export/pdf.js';
+import { buildPdf, notePdf, jpegInfo, coverPage, srgbIcc } from '../../js/export/pdf.js';
 import { encodeStrokes, decodeStrokes } from '../../js/ink/codec.js';
 import { paperGeometry } from '../../js/ink/paper.js';
 
@@ -326,4 +326,139 @@ test('notePdf: Lineaturen und Rechenkästchen ergeben gültige PDFs (xref)', asy
       checkXref(new Uint8Array(await blob.arrayBuffer()));
     }
   }
+});
+
+// ───── Formate, Titelblatt, PDF/A ─────
+
+const mediaBoxes = (bytes) => [...latin1(bytes).matchAll(/\/MediaBox \[0 0 ([\d.]+) ([\d.]+)\]/g)].map((m) => [Number(m[1]), Number(m[2])]);
+const mm = (v) => Math.round(v / 72 * 25.4);
+
+test('buildPdf: DIN A5, A4 (Standard) und A3 in Hoch- und Querformat', () => {
+  const pages = [
+    { paper: 'lined', orient: 'p', size: 'a5', strokes: '[]' },
+    { paper: 'grid', orient: 'l', size: 'a3', strokes: '[]' },
+    { paper: 'blank', orient: 'p', strokes: '[]' },
+    { paper: 'blank', orient: 'l', size: 'unsinn', strokes: '[]' },
+  ];
+  const bytes = buildPdf(pages);
+  checkXref(bytes);
+  assert.deepEqual(mediaBoxes(bytes).map(([w, h]) => [mm(w), mm(h)]), [[148, 210], [420, 297], [210, 297], [297, 210]]);
+});
+
+test('buildPdf: Papier-Linien eines A5-Blatts enden am A5-Rand', () => {
+  const bytes = buildPdf([{ paper: 'lined', orient: 'p', size: 'a5', strokes: '[]' }]);
+  const offsets = checkXref(bytes);
+  const { data } = streamOf(bytes, offsets, 6);
+  const w = Math.round(((1480 * 72) / 254) * 100) / 100;
+  const ends = [...data.matchAll(/ m ([\d.]+) [\d.]+ l/g)].map((m) => Number(m[1]));
+  assert.ok(ends.length > 10);
+  assert.equal(Math.max(...ends), w, 'Linien enden an der A5-Breite');
+});
+
+const GRAY = (w, h) => { const g = new Uint8Array(w * h).fill(255); g[0] = 0; return { w, h, gray: g }; };
+const COVER = {
+  size: 'a4', orient: 'p',
+  boxes: [{ x: 0, y: 0, w: 80, h: 2970, color: '#1f3a93' }],
+  lines: [{ x1: 200, y1: 900, x2: 1900, y2: 900, width: 5, color: '#999999' }],
+  texts: [{ x: 200, y: 600, w: 1200, h: 150, img: GRAY(30, 4) }, { x: 200, y: 1000, w: 600, h: 80, img: GRAY(8, 2) },
+    { x: 0, y: 0, w: 10, h: 10, img: { w: 3, h: 3, gray: new Uint8Array(5) } }],
+};
+
+test('coverPage: Flächen, Linien und Text-Bilder in pt, falsche Bilder übersprungen', () => {
+  const c = coverPage(COVER);
+  assert.equal(c.texts.length, 2);
+  assert.match(c.content, /re f/);
+  assert.match(c.content, / l S/);
+  assert.match(c.content, /\/T0 Do Q/);
+  assert.match(c.content, /\/T1 Do Q/);
+  assert.ok(!c.content.includes('/T2'));
+  assert.equal(Math.round(c.w), 595);
+  const a5 = coverPage({ ...COVER, size: undefined, orient: undefined }, { size: 'a5', orient: 'l' });
+  assert.deepEqual([mm(a5.w), mm(a5.h)], [210, 148]);
+});
+
+test('buildPdf: Titelblatt ist die erste Seite mit Graustufen-Bildern', () => {
+  const bytes = buildPdf(PAGES, { title: TITLE, cover: COVER });
+  const offsets = checkXref(bytes);
+  const s = latin1(bytes);
+  assert.match(s, /\/Count 3 /);
+  assert.equal((s.match(/\/ColorSpace \/DeviceGray \/BitsPerComponent 8/g) || []).length, 2);
+  const { data } = streamOf(bytes, offsets, 6);
+  assert.match(data, /\/T0 Do/);
+  assert.match(latin1(bytes).slice(offsets[5], offsets[6]), /\/XObject << \/T0 \d+ 0 R \/T1 \d+ 0 R >>/);
+});
+
+test('notePdf: Titelblatt-Bilder werden komprimiert und bleiben gleich', async () => {
+  const blob = await notePdf({ title: 'T' }, PAGES, { cover: COVER });
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  const offsets = checkXref(bytes);
+  const s = latin1(bytes);
+  const n = [...s.matchAll(/(\d+) 0 obj\n<< \/Type \/XObject \/Subtype \/Image \/Width 30 /g)].map((m) => Number(m[1]))[0];
+  const { dict, data } = streamOf(bytes, offsets, n);
+  assert.match(dict, /\/FlateDecode/);
+  assert.equal(data.length, 120);
+  assert.equal(data.charCodeAt(0), 0);
+});
+
+test('srgbIcc: ICC-v2-Profil mit gültigem Kopf und Tags', () => {
+  const p = srgbIcc();
+  const dv = new DataView(p.buffer, p.byteOffset, p.byteLength);
+  assert.equal(dv.getUint32(0), p.length);
+  assert.equal(latin1(p.subarray(12, 24)), 'mntrRGB XYZ ');
+  assert.equal(latin1(p.subarray(36, 40)), 'acsp');
+  const n = dv.getUint32(128);
+  const tags = [];
+  for (let i = 0; i < n; i++) {
+    const o = 132 + 12 * i;
+    const sig = latin1(p.subarray(o, o + 4)), off = dv.getUint32(o + 4), len = dv.getUint32(o + 8);
+    assert.ok(off % 4 === 0 && off + len <= p.length, sig);
+    tags.push(sig);
+  }
+  for (const t of ['desc', 'cprt', 'wtpt', 'rXYZ', 'gXYZ', 'bXYZ', 'rTRC', 'gTRC', 'bTRC']) assert.ok(tags.includes(t), t);
+});
+
+test('buildPdf pdfa: PDF 1.7, XMP, OutputIntent, ID, Datumsangaben in Info und XMP gleich', () => {
+  const date = new Date(Date.UTC(2026, 10, 25, 9, 8, 7));
+  const bytes = buildPdf(PAGES, { title: 'A&B <Test> Ä 𝄞', cover: COVER, pdfa: true, date });
+  const offsets = checkXref(bytes);
+  const s = latin1(bytes);
+  assert.ok(s.startsWith('%PDF-1.7\n%'));
+  assert.ok([...bytes.subarray(10, 14)].every((b) => b > 127), 'Binärkommentar');
+  assert.match(s, /\/ID \[<[0-9A-F]{32}> <[0-9A-F]{32}>\]/);
+  assert.match(s, /\/OutputIntents \[<< \/Type \/OutputIntent \/S \/GTS_PDFA1 /);
+  assert.match(s, /\/CreationDate \(D:20261125090807\+00'00'\) \/ModDate \(D:20261125090807\+00'00'\)/);
+  const metaNo = Number(/\/Metadata (\d+) 0 R/.exec(s)[1]);
+  const iccNo = Number(/\/DestOutputProfile (\d+) 0 R/.exec(s)[1]);
+  const meta = streamOf(bytes, offsets, metaNo);
+  assert.match(meta.dict, /\/Type \/Metadata \/Subtype \/XML/);
+  assert.ok(!meta.dict.includes('/Filter'));
+  const xmp = Buffer.from(meta.data, 'latin1').toString('utf8');
+  assert.match(xmp, /<pdfaid:part>2<\/pdfaid:part>/);
+  assert.match(xmp, /<pdfaid:conformance>B<\/pdfaid:conformance>/);
+  assert.match(xmp, /<rdf:li xml:lang="x-default">A&amp;B &lt;Test&gt; Ä 𝄞<\/rdf:li>/);
+  assert.match(xmp, /<xmp:CreateDate>2026-11-25T09:08:07\+00:00<\/xmp:CreateDate>/);
+  assert.match(xmp, /<pdf:Producer>Notizen<\/pdf:Producer>/);
+  const icc = streamOf(bytes, offsets, iccNo);
+  assert.match(icc.dict, /\/N 3 \/Length 988/);
+  // Kein PDF/A ohne Option
+  const plain = latin1(buildPdf(PAGES));
+  assert.ok(plain.startsWith('%PDF-1.4'));
+  assert.ok(!plain.includes('/OutputIntents') && !plain.includes('/Metadata'));
+});
+
+test('buildPdf pdfa: CMYK-JPEG wird weggelassen, RGB bleibt', () => {
+  const jpeg = (comps) => Uint8Array.from([0xff, 0xd8, 0xff, 0xc0, 0, 8 + 3 * comps, 8, 0, 2, 0, 3, comps, ...new Array(3 * comps).fill(1), 0xff, 0xd9]);
+  const images = { c: jpeg(4), r: jpeg(3) };
+  const pages = [{ paper: 'blank', orient: 'p', bg: 'c', strokes: '[]' }, { paper: 'blank', orient: 'p', bg: 'r', strokes: '[]' }];
+  const a = latin1(buildPdf(pages, { images, pdfa: true }));
+  assert.ok(!a.includes('/DeviceCMYK'));
+  assert.equal((a.match(/\/DCTDecode/g) || []).length, 1);
+  assert.equal((latin1(buildPdf(pages, { images })).match(/\/DCTDecode/g) || []).length, 2);
+});
+
+test('PDF/A mit Titelblatt ist mit qpdf gültig', { skip: !HAS_QPDF && 'qpdf nicht installiert' }, () => {
+  withTempPdf(buildPdf([{ paper: 'lined', orient: 'p', size: 'a5', strokes: '[]' }, ...PAGES], { title: TITLE, cover: COVER, pdfa: true }), (file) => {
+    const r = spawnSync('qpdf', ['--check', file], { encoding: 'utf8' });
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+  });
 });

@@ -1,6 +1,17 @@
 // Shared constants. Page units: 0.1 mm.
 
-export const PAGE = { p: { w: 2100, h: 2970 }, l: { w: 2970, h: 2100 } };
+export const PAGE = { p: { w: 2100, h: 2970 }, l: { w: 2970, h: 2100 } };   // DIN A4
+/** Seitenformate (Hochformat, 0,1 mm). Seiten ohne `size` (ältere Daten) sind A4. */
+export const PAGE_SIZES = ['a4', 'a5', 'a3'];
+export const SIZE_NAMES = { a4: 'DIN A4', a5: 'DIN A5', a3: 'DIN A3' };
+const SIZE_DIMS = { a4: [2100, 2970], a5: [1480, 2100], a3: [2970, 4200] };
+/** {w, h} einer Seite in 0,1 mm für Format und Ausrichtung ('p' | 'l'); Unbekanntes → A4 bzw. Hochformat. */
+export function pageDims(size, orient) {
+  const [a, b] = SIZE_DIMS[size] || SIZE_DIMS.a4;
+  return orient === 'l' ? { w: b, h: a } : { w: a, h: b };
+}
+/** Normalisiertes Format einer Seite. */
+export const sizeOf = (page) => (page && PAGE_SIZES.includes(page.size) ? page.size : 'a4');
 export const PAPERS = ['blank', 'lined', 'grid', 'dotted', 'vocab', 'lin1', 'lin2', 'lin3', 'lin4', 'math'];
 export const PAPER_NAMES = {
   blank: 'Blanko', lined: 'Liniert', grid: 'Kariert', dotted: 'Gepunktet', vocab: 'Vokabeln',

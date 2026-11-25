@@ -537,6 +537,7 @@ function backupDoc(parts, assets) {
       pos: p.pos,
       paper: p.paper,
       orient: p.orient,
+      size: p.size || 'a4',
       strokes: typeof p.strokes === 'string' ? p.strokes : JSON.stringify(p.strokes || []),
       bg: p.bg && have.has(p.bg) ? p.bg : null,
       created_at: p.created_at,

@@ -237,9 +237,11 @@ export async function mountSharedNote(el, { noteId }, ctx) {
     try {
       let pdf;
       let save;
+      let exp;
       try {
         pdf = await import('../export/pdf.js');
         save = await import('../export/save.js');
+        exp = await import('./export-dialog.js');
       } catch {
         toast('PDF-Export kommt bald');
         return;
@@ -256,7 +258,9 @@ export async function mountSharedNote(el, { noteId }, ctx) {
             return null;
           }
         };
-        const blob = await pdf.notePdf(note, pages, { getAssetBytes });
+        const opts = await exp.askPdfOptions(note.title, pages[0] || null);   // Titelblatt, PDF/A
+        if (!opts) return;
+        const blob = await pdf.notePdf(note, pages, { getAssetBytes, cover: opts.cover, pdfa: opts.pdfa });
         await save.saveFile(blob, fileName(note.title) + '.pdf');
       } catch (e) {
         if (e && e.name === 'AbortError') return;   // Teilen-Menü abgebrochen

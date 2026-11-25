@@ -1,6 +1,6 @@
 // Paper geometry (page units), shared by canvas and PDF.
 
-import { PAGE, PAPER_STYLE as S, LINEATUR } from '../config.js';
+import { pageDims, PAPER_STYLE as S, LINEATUR } from '../config.js';
 
 const cache = new Map();
 const LIN_BOTTOM = 150; // Schreibzeilen enden mindestens 15 mm über dem unteren Rand
@@ -12,10 +12,10 @@ const LIN_BOTTOM = 150; // Schreibzeilen enden mindestens 15 mm über dem untere
  * `margin` = accent segments (margin/column lines, drawn in PAPER_STYLE.marginColor); 4 numbers per segment.
  * strongLines und bands sind für alle Sorten vorhanden, außer bei den Sorten ohne Schreibzeilen leer.
  */
-export function paperGeometry(paper, orient) {
-  const key = paper + orient;
+export function paperGeometry(paper, orient, size = 'a4') {
+  const key = paper + orient + size;
   if (cache.has(key)) return cache.get(key);
-  const { w, h } = PAGE[orient] || PAGE.p;
+  const { w, h } = pageDims(size, orient);
   const lines = [];
   const strong = [];
   const bands = [];
@@ -68,11 +68,11 @@ export function paperGeometry(paper, orient) {
 }
 
 /**
- * Vocabulary layout for the quiz cover (page units): columns {left: [x0, x1], right: [x0, x1]} and the writing rows
+ * Vocabulary layout for the quiz cover (page units, format `size`): columns {left: [x0, x1], right: [x0, x1]} and the writing rows
  * [[y0, y1], …] below the heading row (each row ends on a ruled line).
  */
-export function vocabLayout(orient) {
-  const { w, h } = PAGE[orient] || PAGE.p;
+export function vocabLayout(orient, size = 'a4') {
+  const { w, h } = pageDims(size, orient);
   const split = Math.round(w * S.vocabSplit), check = w - S.vocabCheck;
   const rows = [];
   for (let y = S.vocabTop; y + S.lined <= h - S.lined; y += S.lined) rows.push([y, y + S.lined]);

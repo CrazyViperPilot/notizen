@@ -72,6 +72,12 @@ function sync_clean($kind, $d)
         $papers = ['blank', 'lined', 'grid', 'dotted', 'vocab', 'lin1', 'lin2', 'lin3', 'lin4', 'math'];
         $c['paper'] = isset($d['paper']) && in_array($d['paper'], $papers, true) ? $d['paper'] : fail(400, 'invalid', 'Papier ungültig.');
         $c['orient'] = isset($d['orient']) && in_array($d['orient'], ['p', 'l'], true) ? $d['orient'] : fail(400, 'invalid', 'Ausrichtung ungültig.');
+        // Format: fehlt bei älteren Clients → null, sync_apply übernimmt dann das gespeicherte Format (neu: A4).
+        if (array_key_exists('size', $d) && $d['size'] !== null) {
+            $c['size'] = in_array($d['size'], ['a4', 'a5', 'a3'], true) ? $d['size'] : fail(400, 'invalid', 'Format ungültig.');
+        } else {
+            $c['size'] = null;
+        }
         $bg = isset($d['bg']) ? $d['bg'] : null;
         if ($bg !== null && !asset_id_valid($bg)) fail(400, 'invalid', 'Bild ungültig.');
         $c['bg'] = $bg;
@@ -115,6 +121,7 @@ function sync_row_out($kind, array $r, $withStrokes)
         $o['pos'] = (float)$r['pos'];
         $o['paper'] = $r['paper'];
         $o['orient'] = $r['orient'];
+        $o['size'] = isset($r['size']) ? $r['size'] : 'a4';
         $o['bg'] = $r['bg'];
         $o['conflict'] = (int)$r['conflict'];
         $o['bytes'] = (int)$r['bytes'];
@@ -249,7 +256,7 @@ function row_cols($kind, array $row)
     $keep = ['created_at', 'updated_at', 'deleted_at', 'purged', sync_kinds()[$kind]['parent']];
     if ($kind === 'folder') $keep[] = 'name';
     if ($kind === 'note') { $keep[] = 'title'; $keep[] = 'pinned'; }
-    if ($kind === 'page') $keep = array_merge($keep, ['pos', 'paper', 'orient', 'bg', 'strokes', 'bytes', 'conflict']);
+    if ($kind === 'page') $keep = array_merge($keep, ['pos', 'paper', 'orient', 'size', 'bg', 'strokes', 'bytes', 'conflict']);
     $c = [];
     foreach ($keep as $k) $c[$k] = $row[$k];
     return $c;
@@ -277,6 +284,7 @@ function sync_apply(array $ch, array &$st)
 
     $row = sync_get($kind, $id, true);
     if ($row && (int)$row['user_id'] !== $st['uid']) fail(403, 'forbidden', 'Kein Zugriff.');
+    if ($kind === 'page' && $cols['size'] === null) $cols['size'] = $row ? $row['size'] : 'a4';
 
     // Explicit "delete permanently": always accepted.
     if ($cols['purged']) {
@@ -421,7 +429,7 @@ function route_sync_pull($u)
     $cands = tx(function () use ($uid, $since, $limit) {
         $cands = [];
         foreach (sync_kinds() as $kind => $k) {
-            $cols = $kind === 'page' ? 'id, note_id, pos, paper, orient, bg, bytes, conflict, created_at, updated_at, deleted_at, purged, rev, seq' : '*';
+            $cols = $kind === 'page' ? 'id, note_id, pos, paper, orient, size, bg, bytes, conflict, created_at, updated_at, deleted_at, purged, rev, seq' : '*';
             foreach (all("SELECT $cols FROM {" . $k['table'] . '} WHERE user_id = ? AND seq > ? ORDER BY seq LIMIT ' . ($limit + 1), [$uid, $since]) as $r) {
                 $cands[] = ['kind' => $kind, 'row' => $r];
             }

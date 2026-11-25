@@ -187,6 +187,7 @@ export function localPages(page, noteId) {
       id: p.id,
       paper: p.paper,
       orient: p.orient,
+      size: p.size || null,
       bg: p.bg || null,
       conflict: p.conflict || 0,
       rev: p.rev,

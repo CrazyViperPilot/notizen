@@ -6,6 +6,7 @@
 import { openDb, deleteDb } from './db.js';
 import { createSync } from './sync.js';
 import { api } from './api.js';
+import { PAGE_SIZES } from './config.js';
 
 const STORE = { folder: 'folders', note: 'notes', page: 'pages' };
 const NOTE_TOUCH_MS = 60000;
@@ -165,10 +166,10 @@ export async function getNote(id) {
   return n && !n.purged ? n : null;
 }
 
-export async function createNote({ title, folderId = null, paper = 'lined', orient = 'p' }) {
+export async function createNote({ title, folderId = null, paper = 'lined', orient = 'p', size = 'a4' }) {
   const now = Date.now();
   const note = await write('note', { id: uuid(), folder_id: folderId, title: cleanName(title, defaultTitle()), ...base(now) }, { touch: false });
-  await write('page', newPage(note.id, 1, paper, orient, now), { touch: false });
+  await write('page', newPage(note.id, 1, paper, orient, now, size), { touch: false });
   return note;
 }
 
@@ -198,8 +199,9 @@ export async function restoreNote(id) {
 
 // ───────────────────────── pages ─────────────────────────
 
-function newPage(noteId, pos, paper, orient, now = Date.now()) {
-  return { id: uuid(), note_id: noteId, pos, paper, orient, bg: null, strokes: '[]', bytes: 2, conflict: 0, need: 0, ...base(now) };
+/** size: 'a4' | 'a5' | 'a3' (PAGE_SIZES); unknown → 'a4'. */
+function newPage(noteId, pos, paper, orient, now = Date.now(), size = 'a4') {
+  return { id: uuid(), note_id: noteId, pos, paper, orient, size: PAGE_SIZES.includes(size) ? size : 'a4', bg: null, strokes: '[]', bytes: 2, conflict: 0, need: 0, ...base(now) };
 }
 
 /** Visible pages of a note, by pos. Pages whose strokes are not downloaded yet have strokes === null. */
@@ -251,7 +253,7 @@ export async function duplicatePage(pageId) {
   const p = await getPage(pageId);
   if (!p || typeof p.strokes !== 'string') return null;
   const pos = await posAfter(p.note_id, pageId);
-  const copy = { ...newPage(p.note_id, pos, p.paper, p.orient), bg: p.bg || null, strokes: p.strokes, bytes: p.strokes.length };
+  const copy = { ...newPage(p.note_id, pos, p.paper, p.orient, Date.now(), p.size), bg: p.bg || null, strokes: p.strokes, bytes: p.strokes.length };
   const r = await write('page', copy, { touch: false });
   await touchNote(p.note_id, true);
   return r;
@@ -340,7 +342,7 @@ export function getImage(id, { noteId = null, store = true } = {}) {
   return p;
 }
 
-export async function addPage(noteId, afterPageId, { paper, orient }) {
+export async function addPage(noteId, afterPageId, { paper, orient, size = 'a4' }) {
   let pages = await listPages(noteId);
   let pos;
   const i = afterPageId ? pages.findIndex((p) => p.id === afterPageId) : -1;
@@ -354,7 +356,7 @@ export async function addPage(noteId, afterPageId, { paper, orient }) {
       pos = pages[i].pos + 0.5;
     }
   }
-  const page = await write('page', newPage(noteId, pos, paper, orient), { touch: false });
+  const page = await write('page', newPage(noteId, pos, paper, orient, Date.now(), size), { touch: false });
   await touchNote(noteId, true);
   return page;
 }
@@ -367,9 +369,11 @@ export async function deletePage(id) {
   await touchNote(p.note_id, true);
 }
 
-export async function setPaper(id, paper, orient) {
+/** Paper, orientation and format of a page (orient/size omitted = unchanged). */
+export async function setPaper(id, paper, orient, size) {
   const p = await getPage(id);
-  if (p && typeof p.strokes === 'string') return write('page', { ...p, paper, orient: orient || p.orient });
+  const sz = PAGE_SIZES.includes(size) ? size : PAGE_SIZES.includes(p && p.size) ? p.size : 'a4';
+  if (p && typeof p.strokes === 'string') return write('page', { ...p, paper, orient: orient || p.orient, size: sz });
 }
 
 export async function saveStrokes(pageId, strokes) {

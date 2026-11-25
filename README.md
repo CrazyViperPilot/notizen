@@ -1,8 +1,8 @@
 # Notizen
 
 Minimale Handschrift-Notizen für das iPad mit Apple Pencil: Web-App (PWA) mit PHP/MySQL-Backend,
-Benutzerverwaltung und Admin-Bereich. Ordner und Unterordner, A4-Seiten mit vier Papiersorten, offline schreiben mit Sync,
-nur lesend teilen, PDF-Export und Backup.
+Benutzerverwaltung und Admin-Bereich. Ordner und Unterordner, Seiten in DIN A4, A5 oder A3 mit vielen Papiersorten, Lineal, offline schreiben mit Sync,
+nur lesend teilen, PDF-Export (mit Titelblatt, auch PDF/A) und Backup.
 
 - **App:** https://phpexpert.de/notizen/ (auf dem iPad in Safari öffnen → Teilen → „Zum Home-Bildschirm“)
 - **Admin:** https://phpexpert.de/notizen/admin.html

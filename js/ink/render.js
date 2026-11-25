@@ -1,7 +1,7 @@
 // Canvas drawing. All functions expect ctx's transform to map page units (0.1 mm) to device pixels;
 // `scale` = device pixels per page unit (used for minimum line widths).
 
-import { PAGE, HL_WIDTH, HL_ALPHA, PENCIL_ALPHA, PAPER_STYLE, penColor, hlColor } from '../config.js';
+import { pageDims, HL_WIDTH, HL_ALPHA, PENCIL_ALPHA, PAPER_STYLE, penColor, hlColor } from '../config.js';
 import { paperGeometry } from './paper.js';
 import { penShapes, bbox } from './stroke.js';
 
@@ -12,7 +12,7 @@ export function setPageTransform(ctx, scale, ox = 0, oy = 0) {
 
 /** Where a background image of iw×ih pixels lies on the page ("contain", centered): [x, y, w, h] in page units. */
 export function imageRect(page, iw, ih) {
-  const { w, h } = PAGE[page.orient] || PAGE.p;
+  const { w, h } = pageDims(page.size, page.orient);
   if (!(iw > 0 && ih > 0)) return [0, 0, w, h];
   const f = Math.min(w / iw, h / ih);
   const rw = iw * f, rh = ih * f;
@@ -21,7 +21,7 @@ export function imageRect(page, iw, ih) {
 
 /** `img`: decoded background image (page.bg) or null. */
 export function drawPaper(ctx, page, scale, clip = null, img = null) {
-  const { w, h } = PAGE[page.orient] || PAGE.p;
+  const { w, h } = pageDims(page.size, page.orient);
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, w, h);
   if (img) {
@@ -31,7 +31,7 @@ export function drawPaper(ctx, page, scale, clip = null, img = null) {
     ctx.drawImage(img, r[0], r[1], r[2], r[3]);
     ctx.restore();
   }
-  const g = paperGeometry(page.paper, page.orient);
+  const g = paperGeometry(page.paper, page.orient, page.size);
   const lw = Math.max(1.6, 0.9 / scale);
   // Getönte Schreibbänder (Lineatur 1 und 2) zuerst, damit die Linien obenauf liegen
   if (g.bands.length) {

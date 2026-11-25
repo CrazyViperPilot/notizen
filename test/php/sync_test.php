@@ -439,3 +439,25 @@ function test_sync_conflict_copy_enforces_quota()
     assert_eq(2, (int)val('SELECT COUNT(*) FROM {pages} WHERE conflict = 1'));
     assert_eq(179, (int)$a->get('account')['json']['used_bytes']);
 }
+
+function test_sync_page_size()
+{
+    $a = user_client('anna');
+    $r = push($a, [
+        ch('note', uid_(1), n_data('Formate')),
+        ch('page', uid_(2), p_data(uid_(1), '[]', 1000, ['size' => 'a5'])),
+        ch('page', uid_(3), p_data(uid_(1), '[]', 1000, ['size' => 'a3', 'orient' => 'l'])),
+        ch('page', uid_(4), p_data(uid_(1), '[]', 1000)),
+    ]);
+    assert_eq(['ok', 'ok', 'ok', 'ok'], array_column($r, 'status'));
+    assert_eq('a5', $r[1]['row']['size']);
+    assert_eq('a3', val('SELECT size FROM {pages} WHERE id = ?', [uid_(3)]));
+    assert_eq('a4', val('SELECT size FROM {pages} WHERE id = ?', [uid_(4)]), 'ohne Format → A4');
+    // Älterer Client ohne size: das gespeicherte Format bleibt.
+    $r = push($a, [ch('page', uid_(2), p_data(uid_(1), '[{"i":"x"}]', 2000), 1)]);
+    assert_eq('ok', $r[0]['status']);
+    assert_eq('a5', val('SELECT size FROM {pages} WHERE id = ?', [uid_(2)]));
+    $r = push($a, [ch('page', uid_(5), p_data(uid_(1), '[]', 1000, ['size' => 'letter']))]);
+    assert_eq('rejected', $r[0]['status']);
+    assert_eq('invalid', $r[0]['code']);
+}
