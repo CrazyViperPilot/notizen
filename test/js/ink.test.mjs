@@ -259,7 +259,7 @@ const LIN_PAPERS = ['lin1', 'lin2', 'lin3'];
 const OLD_PAPERS = ['blank', 'lined', 'grid', 'dotted', 'vocab'];
 
 test('config: PAPERS um die fünf neuen Sorten nach vocab erweitert, Namen gesetzt', () => {
-  assert.deepEqual(PAPERS, ['blank', 'lined', 'grid', 'dotted', 'vocab', 'lin1', 'lin2', 'lin3', 'lin4', 'math']);
+  assert.deepEqual(PAPERS, ['blank', 'lined', 'grid', 'dotted', 'vocab', 'lin1', 'lin2', 'lin3', 'lin4', 'math', 'coord', 'mm', 'music', 'iso']);
   assert.equal(PAPER_NAMES.lin1, 'Lineatur 1');
   assert.equal(PAPER_NAMES.lin4, 'Lineatur 4');
   assert.equal(PAPER_NAMES.math, 'Rechenkästchen mit Rand');

@@ -91,14 +91,14 @@ export function dialog({ title, body, actions = [{ label: 'OK', value: true, pri
 }
 
 /** Asks for a text. Resolves with the trimmed string or null. */
-export async function promptText({ title, label = '', value = '', okLabel = 'OK', placeholder = '', maxLength = 200 }) {
+export async function promptText({ title, label = '', value = '', okLabel = 'OK', placeholder = '', maxLength = 200, allowEmpty = false }) {
   const input = h('input', { className: 'input', value, placeholder, maxLength, autocomplete: 'off', autocapitalize: 'sentences' });
   const err = h('div', { className: 'error-text' });
   const r = await dialog({
     title,
     body: h('label', { className: 'field' }, label ? h('span', { text: label }) : null, input, err),
     actions: [{ label: 'Abbrechen', value: null }, { label: okLabel, value: 'ok', primary: true }],
-    onAction: () => { if (!input.value.trim()) { err.textContent = 'Bitte etwas eingeben.'; return false; } return true; },
+    onAction: () => { if (!allowEmpty && !input.value.trim()) { err.textContent = 'Bitte etwas eingeben.'; return false; } return true; },
   });
   return r === 'ok' ? input.value.trim() : null;
 }
@@ -117,7 +117,9 @@ export async function confirmDialog({ title, message, okLabel = 'OK', danger = f
  * Popup menu at an element or point. items: [{label, icon?, danger?, onSelect}] or 'sep'.
  */
 export function menu(anchor, items) {
-  const close = () => { backdrop.remove(); m.remove(); };
+  const onKey = (e) => { if (e.key === 'Escape') { e.preventDefault(); close(); } };
+  const close = () => { backdrop.remove(); m.remove(); document.removeEventListener('keydown', onKey, true); };
+  document.addEventListener('keydown', onKey, true);
   const m = h('div', { className: 'nz-menu', role: 'menu' }, items.map((it) => it === 'sep'
     ? h('hr')
     : h('button', { type: 'button', role: 'menuitem', className: it.danger ? 'danger' : '', onclick: () => { close(); it.onSelect(); } },

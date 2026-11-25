@@ -53,7 +53,7 @@ test('Geodreieck: Stiftführung an langer Kante und Kathete, mit Lineal, verschi
 
     await page.keyboard.press('g');
     await page.locator('canvas.geodreieck').waitFor({ state: 'visible' });
-    assert.equal(await page.getByRole('button', { name: 'Geodreieck', exact: true }).getAttribute('aria-pressed'), 'true');
+    assert.ok(await page.locator('.tb-instr.on').count(), 'Knopf „Messwerkzeuge“ hervorgehoben');
     const st = await page.evaluate(() => JSON.parse(localStorage.getItem('notizen:geodreieck')));
     const s = await page.evaluate(() => {
       // px pro mm aus der Seitenbreite (Rasterpapier, A4 = 210 mm)
@@ -98,7 +98,8 @@ test('Geodreieck: Stiftführung an langer Kante und Kathete, mit Lineal, verschi
     assert.ok(Math.abs(st2.x - st.x - 60) < 2 && Math.abs(st2.y - st.y - 40) < 2, 'verschoben');
     assert.equal((await strokesOf(page, noteId)).length, 3, 'Verschieben zeichnet nicht');
 
-    await page.getByRole('button', { name: 'Geodreieck', exact: true }).click();
+    await page.getByRole('button', { name: 'Messwerkzeuge', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Geodreieck' }).click();
     await page.locator('canvas.geodreieck').waitFor({ state: 'hidden' });
 
     assertNoErrors(dev.errors);

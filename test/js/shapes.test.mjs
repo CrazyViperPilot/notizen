@@ -48,7 +48,7 @@ function assertDenseOutput(res) {
   for (let i = 1; i < n; i++) {
     assert.ok(dist(xy(res.pts, i - 1), xy(res.pts, i)) <= 20, `Abstand Punkt ${i - 1}→${i} zu groß`);
   }
-  const closed = res.kind !== 'line';
+  const closed = res.kind !== 'line' && res.kind !== 'arrow';   // Linie und Pfeil sind offene Züge
   const first = xy(res.pts, 0), last = xy(res.pts, n - 1);
   if (closed) assert.deepEqual(last, first, 'geschlossene Form endet am Startpunkt');
   else assert.ok(dist(first, last) > 20, 'Linie ist offen');
@@ -241,4 +241,190 @@ test('Laufzeit: 500 Punkte grob unter 5 ms je Aufruf', () => {
   for (let i = 0; i < runs; i++) recognizeShape(pts);
   const per = (performance.now() - t0) / runs;
   assert.ok(per < 5, `${per.toFixed(2)} ms je Aufruf`);
+});
+
+// --- Dreieck, Vieleck, Pfeil (ARCHITEKTUR 11.4, Erweiterung) ---
+
+// Samples an open or closed polyline evenly by arc length (verts: [[x,y], …]); noise ±amp, pressure p or pFn(i).
+function alongPath(verts, n, { amp = 0, p = 128, seed = 7, pFn = null } = {}) {
+  const segs = [];
+  let total = 0;
+  for (let i = 0; i + 1 < verts.length; i++) {
+    const L = Math.hypot(verts[i + 1][0] - verts[i][0], verts[i + 1][1] - verts[i][1]);
+    segs.push(L);
+    total += L;
+  }
+  const rand = rng(seed);
+  const out = [];
+  for (let k = 0; k < n; k++) {
+    let s = (k / (n - 1)) * total, i = 0;
+    while (i < segs.length - 1 && s > segs[i]) { s -= segs[i]; i++; }
+    const t = segs[i] ? s / segs[i] : 0;
+    const x = verts[i][0] + (verts[i + 1][0] - verts[i][0]) * t;
+    const y = verts[i][1] + (verts[i + 1][1] - verts[i][1]) * t;
+    out.push(Math.round(x + (rand() * 2 - 1) * amp), Math.round(y + (rand() * 2 - 1) * amp), pFn ? pFn(k) : p);
+  }
+  return Int32Array.from(out);
+}
+
+// Regular polygon (first vertex at angle a0 in degrees), closed by repeating the first vertex.
+function regularClosed(R, cx, cy, k, a0) {
+  const v = [];
+  for (let i = 0; i < k; i++) {
+    const a = ((a0 + (360 * i) / k) * Math.PI) / 180;
+    v.push([cx + R * Math.cos(a), cy + R * Math.sin(a)]);
+  }
+  v.push(v[0]);
+  return v;
+}
+
+// Arrow stroke: shaft S → T, then both arms (T → A1 → T → A2) or one arm (T → A1), arms at 30° to the shaft.
+function arrowStroke(S, T, L, both = true) {
+  const dx = S[0] - T[0], dy = S[1] - T[1], d = Math.hypot(dx, dy);
+  const bx = dx / d, by = dy / d;   // backward direction from the tip
+  const a = (30 * Math.PI) / 180;
+  const rot = (phi) => [bx * Math.cos(phi) - by * Math.sin(phi), bx * Math.sin(phi) + by * Math.cos(phi)];
+  const [a1x, a1y] = rot(a), [a2x, a2y] = rot(-a);
+  const A1 = [T[0] + L * a1x, T[1] + L * a1y];
+  const A2 = [T[0] + L * a2x, T[1] + L * a2y];
+  return both ? [S, T, A1, T, A2] : [S, T, A1];
+}
+
+// Every expected corner has a point of the result within tol.
+function assertCorners(res, corners, tol) {
+  for (const c of corners) {
+    let best = Infinity;
+    for (let i = 0; i < count(res.pts); i++) best = Math.min(best, dist(xy(res.pts, i), c));
+    assert.ok(best <= tol, `Ecke ${c.map(Math.round)} fehlt (Abstand ${best.toFixed(1)})`);
+  }
+}
+
+// The two arm tips of an arrow result: the output points farthest from the tip on each side of the shaft.
+function armsOf(res, S, T) {
+  const dx = S[0] - T[0], dy = S[1] - T[1], d = Math.hypot(dx, dy);
+  const bx = dx / d, by = dy / d;   // backward direction
+  let plus = null, minus = null;
+  for (let i = 0; i < count(res.pts); i++) {
+    const rx = res.pts[3 * i] - T[0], ry = res.pts[3 * i + 1] - T[1];
+    const side = bx * ry - by * rx;
+    if (Math.abs(side) < 5) continue;   // shaft
+    const rec = { len: Math.hypot(rx, ry), side, ang: Math.atan2(Math.abs(side), rx * bx + ry * by) };
+    if (side > 0) { if (!plus || rec.len > plus.len) plus = rec; }
+    else if (!minus || rec.len > minus.len) minus = rec;
+  }
+  assert.ok(plus && minus, 'beide Schenkel vorhanden');
+  return [plus, minus];
+}
+
+function assertArrow(res, S, T, L) {
+  assert.equal(res.kind, 'arrow');
+  assertDenseOutput(res);
+  assertCorners(res, [S, T], 6);
+  const [p, m] = armsOf(res, S, T);
+  for (const a of [p, m]) {
+    assert.ok(Math.abs(a.len - L) <= 6, `Schenkellänge ${a.len.toFixed(1)} ≠ ${L}`);
+    assert.ok(Math.abs(a.ang - Math.PI / 6) <= (4 * Math.PI) / 180, `Schenkelwinkel ${((a.ang * 180) / Math.PI).toFixed(1)}°`);
+  }
+  assert.ok(Math.abs(p.len - m.len) <= 3, 'Schenkel gleich lang');
+  assert.ok(Math.abs(p.side + m.side) <= 4, 'Schenkel symmetrisch zur Achse');
+}
+
+test('Dreieck: spitz, rechtwinklig, mit Zittern → triangle mit den 3 Ecken', () => {
+  const cases = [
+    [[[100, 700], [500, 700], [300, 150], [100, 700]], 0, 6],
+    [[[100, 100], [500, 100], [100, 400], [100, 100]], 0, 6],
+    [[[300, 100], [500, 450], [100, 450], [300, 100]], 4, 8],
+  ];
+  for (const [verts, amp, tol] of cases) {
+    const res = recognizeShape(alongPath(verts, 120, { amp, seed: 9 }));
+    assert.ok(res, 'erkannt');
+    assert.equal(res.kind, 'triangle');
+    assertDenseOutput(res);
+    assertCorners(res, verts.slice(0, 3), tol);
+  }
+});
+
+test('gedrehtes Quadrat (30°) → polygon, Ecken des Quadrats', () => {
+  const sq = regularClosed(150, 300, 300, 4, 30);
+  const res = recognizeShape(alongPath(sq, 120, { amp: 2, seed: 4 }));
+  assert.ok(res, 'erkannt');
+  assert.equal(res.kind, 'polygon');
+  assertDenseOutput(res);
+  assertCorners(res, sq.slice(0, 4), 6);
+});
+
+test('Fünfeck (mit Zittern) und Sechseck → polygon mit allen Ecken', () => {
+  for (const [k, a0, amp, seed] of [[5, -90, 3, 3], [6, 0, 0, 7], [6, 0, 3, 3], [6, 0, 3, 5]]) {
+    const v = regularClosed(200, 400, 400, k, a0);
+    const res = recognizeShape(alongPath(v, 120, { amp, seed }));
+    assert.ok(res, `erkannt (${k}-Eck)`);
+    assert.equal(res.kind, 'polygon', `${k}-Eck`);
+    assertDenseOutput(res);
+    assertCorners(res, v.slice(0, k), 8);
+  }
+});
+
+test('Pfeil nach rechts, nach links, schräg → arrow mit Schaft und symmetrischen 30°-Schenkeln', () => {
+  for (const [S, T, L] of [[[100, 300], [500, 300], 60], [[500, 300], [100, 300], 60], [[120, 120], [450, 380], 70]]) {
+    const res = recognizeShape(alongPath(arrowStroke(S, T, L), 90, { amp: 2, seed: 5 }));
+    assert.ok(res, 'erkannt');
+    assertArrow(res, S, T, L);
+  }
+});
+
+test('Haken-Pfeil (nur eine Seite) → arrow mit zwei symmetrischen Schenkeln', () => {
+  const S = [100, 300], T = [500, 300], L = 70;
+  const res = recognizeShape(alongPath(arrowStroke(S, T, L, false), 70, { amp: 2, seed: 6 }));
+  assert.ok(res, 'erkannt');
+  assertArrow(res, S, T, L);
+});
+
+test('Pfeil mit zu langem Haken (50 % der Linie) → null', () => {
+  const pts = alongPath(arrowStroke([100, 300], [500, 300], 200), 80);
+  assert.equal(recognizeShape(pts), null);
+});
+
+test('Gegentest: zittriger Kreis (Rauschen 5) bleibt circle', () => {
+  const circ = [];
+  for (let i = 0; i <= 120; i++) circ.push([400 + 120 * Math.cos((2 * Math.PI * i) / 120), 400 + 120 * Math.sin((2 * Math.PI * i) / 120)]);
+  const res = recognizeShape(alongPath(circ, 150, { amp: 5, seed: 11 }));
+  assert.ok(res, 'erkannt');
+  assert.equal(res.kind, 'circle');
+  assertDenseOutput(res);
+});
+
+test('Gegentest: gezittertes Rechteck mit ungleichen Seiten (Rauschen 4) bleibt rect', () => {
+  const box = [[80, 120], [460, 120], [460, 330], [80, 330], [80, 120]];
+  const res = recognizeShape(alongPath(box, 160, { amp: 4, seed: 2 }));
+  assert.ok(res, 'erkannt');
+  assert.equal(res.kind, 'rect');
+  assertCorners(res, box.slice(0, 4), 8);
+});
+
+test('Gegentest: gezitterte Diagonale bleibt line', () => {
+  const res = recognizeShape(alongPath([[100, 100], [500, 420]], 60, { amp: 4, seed: 8 }));
+  assert.ok(res, 'erkannt');
+  assert.equal(res.kind, 'line');
+  assertDenseOutput(res);
+});
+
+test('Gegentest: Kritzel (zufällige Punkte, offen oder geschlossen) → null', () => {
+  const rand = rng(5);
+  const open = [];
+  for (let i = 0; i < 60; i++) open.push(Math.round(rand() * 400), Math.round(rand() * 400), 128);
+  assert.equal(recognizeShape(Int32Array.from(open)), null, 'offen');
+  const loop = [];
+  for (let i = 0; i < 80; i++) loop.push(Math.round(rand() * 400), Math.round(rand() * 400), 128);
+  loop.push(loop[0], loop[1], 128);
+  assert.equal(recognizeShape(Int32Array.from(loop)), null, 'geschlossen');
+});
+
+test('Druck: Dreieck trägt den gerundeten Mittelwert der Eingabedrücke', () => {
+  const pts = alongPath([[100, 100], [500, 100], [100, 400], [100, 100]], 120, { pFn: (i) => 100 + (i % 3) * 50 });
+  let sum = 0;
+  for (let i = 0; i < count(pts); i++) sum += pts[3 * i + 2];
+  const want = Math.round(sum / count(pts));
+  const res = recognizeShape(pts);
+  assert.equal(res.kind, 'triangle');
+  for (let i = 0; i < count(res.pts); i++) assert.equal(res.pts[3 * i + 2], want);
 });

@@ -41,10 +41,11 @@ test('A5-Seite, Lineal mit Stiftführung, Format A3, PDF mit Titelblatt und PDF/
     assert.ok(Math.abs(pg.h / pg.w - 2100 / 1480) < 0.01, 'A5-Seitenverhältnis');
 
     // ── Lineal einblenden ──
-    await page.getByRole('button', { name: 'Lineal', exact: true }).click();
+    await page.getByRole('button', { name: 'Messwerkzeuge', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Lineal' }).click();
     const rulerEl = page.locator('canvas.ruler');
     await rulerEl.waitFor({ state: 'visible' });
-    assert.equal(await page.getByRole('button', { name: 'Lineal', exact: true }).getAttribute('aria-pressed'), 'true');
+    assert.ok(await page.locator('.tb-instr.on').count(), 'Knopf „Messwerkzeuge“ hervorgehoben');
     // 30 cm im Seitenmaßstab: Breite der A5-Seite (148 mm) mal 300/148
     const rulerW = await rulerEl.evaluate((el) => parseFloat(el.style.width));
     assert.ok(Math.abs(rulerW - (pg.w * 300) / 148) < 2, `Lineal 30 cm lang (${rulerW} px)`);
@@ -87,7 +88,10 @@ test('A5-Seite, Lineal mit Stiftführung, Format A3, PDF mit Titelblatt und PDF/
 
     // ── Format über das Seitenmenü: A3 ──
     await page.getByRole('button', { name: 'Seitenmenü', exact: true }).click();
+    await page.getByText('Papier und Format…', { exact: true }).click();
     await page.getByText('Format: DIN A3', { exact: true }).click();
+    // Die Seite ist beschrieben: Frage nach dem Mitskalieren
+    await page.locator('.nz-dialog').getByRole('button', { name: 'Mitskalieren', exact: true }).click();
     await until(async () => (await localPages(page, noteId))[0].size === 'a3', { what: 'Format A3 gespeichert' });
 
     // ── PDF-Export mit Titelblatt (Schulheft) und PDF/A ──

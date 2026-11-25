@@ -88,8 +88,9 @@ function folder_descendants(array $folders, $rootId)
  * Note row if $userId may read it, otherwise null. The owner always may (if the note is visible).
  * Others may if the owner is active and the note is shared directly (kind 'note') or lies in a folder
  * shared with them (or in one of its subfolders). Deleted or purged notes and folders are never readable.
+ * With $review only shares with review = 1 count (may correct), and the owner gets null (nobody corrects their own note).
  */
-function can_read_note($userId, $noteId)
+function can_read_note($userId, $noteId, $review = false)
 {
     $userId = (int)$userId;
     if (!uuid_valid($noteId)) return null;
@@ -103,15 +104,16 @@ function can_read_note($userId, $noteId)
     $folders = owner_folders($ownerId);
     $live = folder_live_map($folders);
     if (!note_in_live_folder($n, $live)) return null;
-    if ($ownerId === $userId) return $n;
+    if ($ownerId === $userId) return $review ? null : $n;
+    $rv = $review ? ' AND review = 1' : '';
 
-    $direct = one("SELECT id FROM {shares} WHERE owner_id = ? AND target_id = ? AND kind = 'note' AND item_id = ?",
+    $direct = one("SELECT id FROM {shares} WHERE owner_id = ? AND target_id = ? AND kind = 'note' AND item_id = ?" . $rv,
         [$ownerId, $userId, $noteId]);
     if ($direct !== null) return $n;
     if ($n['folder_id'] === null) return null;
 
     $shared = [];
-    foreach (all("SELECT item_id FROM {shares} WHERE owner_id = ? AND target_id = ? AND kind = 'folder'", [$ownerId, $userId]) as $s) {
+    foreach (all("SELECT item_id FROM {shares} WHERE owner_id = ? AND target_id = ? AND kind = 'folder'" . $rv, [$ownerId, $userId]) as $s) {
         $shared[$s['item_id']] = true;
     }
     if (!$shared) return null;

@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   SIZES, TEMPLATES, FIELD_LABELS, buildCover, drawCoverPreview, todayDe, cleanText,
+  coverPixelSize, renderCoverImage, pageNumberImage,
 } from '../../js/export/cover.js';
 
 // Fake-Renderer: Zeichenbreite und Zeilenhöhe proportional zur Schriftgröße, Umbruch bis 3 Zeilen.
@@ -210,4 +211,133 @@ test('drawCoverPreview zeichnet Boxen und Linien innerhalb des Canvas', () => {
   for (const o of ops.filter((o) => o[0] === 'moveTo' || o[0] === 'lineTo')) {
     assert.ok(o[1] >= 0 && o[1] <= 210 && o[2] >= 0 && o[2] <= 297);
   }
+});
+
+test('coverPixelSize: 1 mm = dpi/25,4 px, gerundet, quer vertauscht', () => {
+  assert.deepEqual(coverPixelSize('a4', 'p', 200), { w: 1654, h: 2339 });
+  assert.deepEqual(coverPixelSize('a4', 'l', 200), { w: 2339, h: 1654 });
+  assert.deepEqual(coverPixelSize('a5', 'p', 200), { w: 1165, h: 1654 });
+  assert.deepEqual(coverPixelSize('a5', 'l', 200), { w: 1654, h: 1165 });
+  assert.deepEqual(coverPixelSize('a3', 'p', 200), { w: 2339, h: 3307 });
+  assert.deepEqual(coverPixelSize('a3', 'l', 200), { w: 3307, h: 2339 });
+  assert.deepEqual(coverPixelSize('a4', 'p', 300), { w: 2480, h: 3508 });
+  assert.deepEqual(coverPixelSize('a4', 'p'), coverPixelSize('a4', 'p', 200));   // Standard 200 dpi
+  assert.deepEqual(coverPixelSize('a4', 'p', 0), { w: 1654, h: 2339 });         // ungültiges dpi → 200
+  assert.deepEqual(coverPixelSize('b9', 'x', 200), { w: 1654, h: 2339 });       // unbekannt → A4 hoch
+});
+
+test('pageNumberImage: Seitenzahl grau #555, zentriert, Standard 3,2 mm; leer → null', () => {
+  const calls = [];
+  const r = pageNumberImage(' 7\u0000 ', {}, fakeRender(calls));
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].text, '7');
+  assert.equal(calls[0].sizeMm, 3.2);
+  assert.equal(calls[0].color, '#555555');
+  assert.equal(calls[0].align, 'center');
+  assert.ok(calls[0].maxWidth > 0);
+  assert.ok(r.w > 0 && r.h > 0);
+  assert.equal(r.img.gray.length, r.img.w * r.img.h);
+  assert.equal(pageNumberImage('   ', {}, fakeRender([])), null);
+  assert.equal(pageNumberImage(undefined, {}, fakeRender([])), null);
+});
+
+test('pageNumberImage: Schriftgröße wählbar, ungültige Größe fällt auf 3,2 mm zurück', () => {
+  const calls = [];
+  assert.ok(pageNumberImage('12', { sizeMm: 5 }, fakeRender(calls)));
+  assert.equal(calls[0].sizeMm, 5);
+  pageNumberImage('12', { sizeMm: -1 }, fakeRender(calls));
+  assert.equal(calls[1].sizeMm, 3.2);
+});
+
+test('pageNumberImage: fehlerhaftes Rendern liefert null', () => {
+  assert.equal(pageNumberImage('12', {}, () => null), null);
+  const kaputt = () => ({ w: 5, h: 5, img: { w: 2, h: 2, gray: new Uint8Array(3) } });
+  assert.equal(pageNumberImage('12', {}, kaputt), null);
+});
+
+// Fake-Canvas für renderCoverImage (ohne DOM): merkt sich Größe, Zeichenaufrufe und die Export-Optionen.
+class FakeOffscreen {
+  constructor(w, h) {
+    this.width = w;
+    this.height = h;
+    this.calls = [];
+    this.opts = null;
+    const calls = this.calls;
+    this.ctx = {
+      fillStyle: '', strokeStyle: '', lineWidth: 1, imageSmoothingEnabled: false, imageSmoothingQuality: 'low',
+      fillRect: (...a) => calls.push(['fillRect', ...a]),
+      beginPath() {}, moveTo() {}, lineTo() {}, stroke() {}, drawImage() {},
+    };
+    FakeOffscreen.made.push(this);
+  }
+
+  getContext() { return this.ctx; }
+
+  convertToBlob(opts) {
+    this.opts = opts;
+    return Promise.resolve(new Blob(['jpeg'], { type: opts.type }));
+  }
+}
+FakeOffscreen.made = [];
+
+/** Setzt einen globalen Namen für eine Funktion und stellt ihn danach wieder her (auch „nicht vorhanden“). */
+async function withGlobal(name, value, fn) {
+  const had = Object.prototype.hasOwnProperty.call(globalThis, name);
+  const saved = globalThis[name];
+  globalThis[name] = value;
+  try {
+    return await fn();
+  } finally {
+    if (had) globalThis[name] = saved;
+    else delete globalThis[name];
+  }
+}
+
+test('renderCoverImage: JPEG mit Pixelmaß nach coverPixelSize (OffscreenCanvas)', async () => {
+  await withGlobal('OffscreenCanvas', FakeOffscreen, async () => {
+    FakeOffscreen.made.length = 0;
+    const cover = { size: 'a5', orient: 'l', boxes: [{ x: 170, y: 170, w: 40, h: 300, color: '#2f5fd0' }], lines: [], texts: [] };
+    const r = await renderCoverImage(cover);
+    assert.deepEqual({ w: r.w, h: r.h }, coverPixelSize('a5', 'l', 200));
+    assert.equal(r.blob.type, 'image/jpeg');
+    const c = FakeOffscreen.made[0];
+    assert.equal(c.width, r.w);
+    assert.equal(c.height, r.h);
+    assert.deepEqual(c.calls[0], ['fillRect', 0, 0, r.w, r.h]);   // weißer Grund zuerst
+    assert.equal(c.calls[1][0], 'fillRect');                      // dann die Box
+    assert.equal(c.ctx.imageSmoothingQuality, 'high');
+    assert.deepEqual(c.opts, { type: 'image/jpeg', quality: 0.9 });
+  });
+});
+
+test('renderCoverImage: dpi und Qualität einstellbar; ohne Titelblatt abgewiesen', async () => {
+  await withGlobal('OffscreenCanvas', FakeOffscreen, async () => {
+    FakeOffscreen.made.length = 0;
+    const cover = { size: 'a4', orient: 'p', boxes: [], lines: [], texts: [] };
+    const r = await renderCoverImage(cover, { dpi: 300, quality: 0.5 });
+    assert.deepEqual({ w: r.w, h: r.h }, { w: 2480, h: 3508 });
+    assert.equal(FakeOffscreen.made[0].opts.quality, 0.5);
+  });
+  await assert.rejects(renderCoverImage(null));
+});
+
+test('renderCoverImage: ohne OffscreenCanvas über canvas.toBlob', async () => {
+  const el = {
+    width: 0,
+    height: 0,
+    opts: null,
+    getContext() { return { fillStyle: '', fillRect() {} }; },
+    toBlob(cb, type, quality) {
+      this.opts = { type, quality };
+      cb(new Blob(['jpeg'], { type }));
+    },
+  };
+  await withGlobal('OffscreenCanvas', undefined, () => withGlobal('document', { createElement: () => el }, async () => {
+    const cover = { size: 'a3', orient: 'p', boxes: [], lines: [], texts: [] };
+    const r = await renderCoverImage(cover);
+    assert.deepEqual({ w: r.w, h: r.h }, coverPixelSize('a3', 'p', 200));
+    assert.equal(r.blob.type, 'image/jpeg');
+    assert.deepEqual(el.opts, { type: 'image/jpeg', quality: 0.9 });
+    assert.equal(el.width, r.w);
+  }));
 });

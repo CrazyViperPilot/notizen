@@ -45,7 +45,7 @@ test('Vokabel-Abfrage: Zähler, Abdeckung, Nächste, Antippen', { timeout: 24000
     await page.locator('.tb-quiz').click();
     await page.locator('.quiz-bar').waitFor({ state: 'visible' });
     const count = page.locator('.quiz-count:not(.quiz-round)');
-    await until(async () => (await count.textContent()) === 'gekonnt: 1 von 5', { what: 'Zähler „gekonnt: 1 von 5“' });
+    await until(async () => (await count.textContent()) === 'gekonnt: 1 von 5 · Fächer 5·0·0·0·0', { what: 'Zähler „gekonnt: 1 von 5“ mit Fächern' });
 
     // Abdeckungen: eine pro belegter Zeile, die gekonnte ist grün (known) und bleibt offen
     const rows = page.locator('.nz-cover-row');
@@ -62,10 +62,10 @@ test('Vokabel-Abfrage: Zähler, Abdeckung, Nächste, Antippen', { timeout: 24000
     await until(async () => (await page.locator('.nz-cover-row.open').count()) === 1, { what: 'aufgedeckte Zeile' });
     assert.equal(await page.locator('.nz-cover-row.known').count(), 1, 'Häkchen bleibt unverändert');
 
-    // Antwort „Gewusst“: Haken wird gesetzt, Zähler steigt, Runde zählt mit
+    // Antwort „Gewusst“ (Lernkartei): Vokabel rückt in Fach 2, Häkchen erst in Fach 5; Runde zählt mit
     await page.getByRole('button', { name: '✓ Gewusst' }).click();
-    await until(async () => (await count.textContent()) === 'gekonnt: 2 von 5', { what: 'Zähler „gekonnt: 2 von 5“' });
-    assert.equal(await page.locator('.nz-cover-row.known').count(), 2, 'zweite Zeile gekonnt');
+    await until(async () => (await count.textContent()) === 'gekonnt: 1 von 5 · Fächer 4·1·0·0·0', { what: 'Fach 2' });
+    assert.equal(await page.locator('.nz-cover-row.known').count(), 1, 'noch kein neues Häkchen');
     assert.match(await page.locator('.quiz-round').textContent(), /1 ✓ · 0 ✗/);
 
     // Nächste offene Zeile aufdecken und „Nicht gewusst“: wieder zugedeckt, Zähler bleibt
@@ -74,12 +74,19 @@ test('Vokabel-Abfrage: Zähler, Abdeckung, Nächste, Antippen', { timeout: 24000
     await until(async () => (await page.locator('.nz-cover-row.open').count()) === 1, { what: 'Zeile 4 aufgedeckt' });
     await page.getByRole('button', { name: '✗ Nicht gewusst' }).click();
     await until(async () => (await page.locator('.nz-cover-row.open').count()) === 0, { what: 'wieder zugedeckt' });
-    assert.equal(await count.textContent(), 'gekonnt: 2 von 5');
+    assert.equal(await count.textContent(), 'gekonnt: 1 von 5 · Fächer 4·1·0·0·0');
     assert.ok((await open()) >= 1);
     assert.match(await page.locator('.quiz-round').textContent(), /1 ✓ · 1 ✗/);
 
-    // Der Haken ist gespeichert (Strich in der Abhak-Spalte)
-    await until(async () => (await strokesOf(page, noteId)).length === 7, { what: 'gespeicherter Haken' });
+    // Der Lernstand ist in der Seite gespeichert (meta.learn, wird synchronisiert): Zeile 3 Fach 2, Zeile 4 Fach 1
+    await until(async () => {
+      const learn = await page.evaluate(async ({ modelUrl, noteId }) => {
+        const m = await import(modelUrl);
+        return m.pageMeta((await m.listPages(noteId))[0]).learn || null;
+      }, { modelUrl: MODEL_URL, noteId });
+      return learn && learn.rows && learn.rows[3] && learn.rows[3].b === 2 && learn.rows[4] && learn.rows[4].b === 1;
+    }, { what: 'Lernstand gespeichert' });
+    assert.equal((await strokesOf(page, noteId)).length, 6, 'kein zusätzlicher Haken');
 
     assertNoErrors(dev.errors);
     assertNoErrors(admin.errors);

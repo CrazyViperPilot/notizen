@@ -159,6 +159,50 @@
 .seg button + button { border-left: 1px solid var(--line); }
 .seg button.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
 
+/* ───────────── Fächerfarben (Ordner): nur Akzente, Text bleibt in der Textfarbe ───────────── */
+/* Ordner-Symbol im Baum (Farbe per --folder-color, ohne Farbe neutral grau) */
+.tree-ico {
+  position: relative; flex: 0 0 auto; width: 16px; height: 12px; margin-right: 6px; border-radius: 2px;
+  background-color: var(--folder-color, #9aa3b2);
+}
+.tree-ico::before {
+  content: ''; position: absolute; left: 0; top: -3px; width: 7px; height: 4px; border-radius: 2px 2px 0 0;
+  background-color: var(--folder-color, #9aa3b2);
+}
+
+/* Ordnerkachel: farbiger Rand links und getöntes Ordner-Symbol */
+.tile.folder.has-color { border-left: 4px solid var(--folder-color); }
+.tile.folder.has-color .ficon {
+  position: relative; isolation: isolate; width: 44px; height: 44px;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.tile.folder.has-color .ficon::before {
+  content: ''; position: absolute; inset: 0; z-index: -1; border-radius: 12px;
+  background: var(--folder-color); opacity: .22;
+}
+
+/* Notizkachel in einem farbigen Ordner: schmaler Streifen am linken Rand */
+.tile.note.has-color::before {
+  content: ''; position: absolute; top: 0; bottom: 0; left: 0; width: 4px; z-index: 2;
+  border-radius: var(--radius) 0 0 var(--radius); background: var(--folder-color); pointer-events: none;
+}
+
+/* Dialog „Ordnerfarbe“: runde Farbfelder, jeweils mindestens 44 px */
+.swatch-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.swatch {
+  display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 0; min-height: var(--tap);
+  padding: 8px 2px 6px; border: 1px solid transparent; border-radius: var(--radius-sm); background: none;
+  color: var(--text); font: inherit; font-size: 13px; cursor: pointer;
+}
+.swatch:active { background: var(--panel-2); }
+.swatch.on { border-color: var(--accent); background: var(--accent-soft); }
+.swatch-dot {
+  display: block; width: 44px; height: 44px; border-radius: 50%; background: var(--swatch);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .12);
+}
+.swatch-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.swatch-none { width: 100%; margin-top: 12px; }
+
 /* ───────────── Papierkorb ───────────── */
 .trash { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; background: var(--bg); }
 .trash-bar {

@@ -52,9 +52,11 @@ export async function openShareDialog(kind, id, name, ctx) {
   const list = h('div', { className: 'share-list' }, h('p', { className: 'muted', text: 'Lade Benutzer …' }));
   const err = h('div', { className: 'error-text', role: 'alert' });
   const inputs = new Map();                              // target user id → checkbox
-  const state = { ready: false, busy: false, shared: new Map() }; // shared: target user id → share id
+  const state = { ready: false, busy: false, shared: new Map(), review: new Map() }; // shared: target id → share id, review: target id → 0/1
+  const reviews = new Map();                             // target user id → checkbox „darf korrigieren“
 
-  const explain = 'Ausgewählte Personen können lesen, aber nichts ändern.'
+  const explain = 'Ausgewählte Personen können lesen, aber nichts ändern. Mit „Korrigieren“ (Abgabe) dürfen sie zusätzlich'
+    + ' mit dem Rotstift korrigieren – ihre Korrekturen liegen in einer eigenen Ebene, deine Schrift bleibt unverändert.'
     + (folder ? ' Bei Ordnern gilt das inklusive aller Unterordner und Notizen, auch künftiger.' : '');
   const body = h('div', { className: 'share-dialog' }, h('p', { className: 'share-explain', text: explain }), list, err);
 
@@ -86,7 +88,9 @@ export async function openShareDialog(kind, id, name, ctx) {
     // Bestehende Freigaben an Personen, die nicht (mehr) in der Liste stehen (z. B. gesperrt), trotzdem zeigen.
     for (const s of shares) if (!names.has(s.target_id)) names.set(s.target_id, s.display_name);
     state.shared = new Map(shares.map((s) => [s.target_id, s.id]));
+    state.review = new Map(shares.map((s) => [s.target_id, s.review ? 1 : 0]));
     inputs.clear();
+    reviews.clear();
     list.replaceChildren();
     if (names.size === 0) {
       list.append(h('p', { className: 'muted', text: 'Keine anderen Benutzer vorhanden.' }));
@@ -94,8 +98,14 @@ export async function openShareDialog(kind, id, name, ctx) {
     const entries = [...names].sort((a, b) => String(a[1]).localeCompare(String(b[1]), 'de'));
     for (const [targetId, label] of entries) {
       const input = h('input', { type: 'checkbox', checked: state.shared.has(targetId) });
+      const rv = h('input', { type: 'checkbox', checked: state.review.get(targetId) === 1, 'aria-label': 'darf korrigieren: ' + label });
+      rv.onchange = () => { if (rv.checked) input.checked = true; };
+      input.addEventListener('change', () => { if (!input.checked) rv.checked = false; });
       inputs.set(targetId, input);
-      list.append(h('label', { className: 'share-row' }, input, h('span', { text: label })));
+      reviews.set(targetId, rv);
+      list.append(h('div', { className: 'share-row-wrap' },
+        h('label', { className: 'share-row' }, input, h('span', { text: label })),
+        h('label', { className: 'share-review' }, rv, h('span', { text: 'Korrigieren' }))));
     }
     state.ready = true;
   }
@@ -111,7 +121,9 @@ export async function openShareDialog(kind, id, name, ctx) {
     }
     const want = new Set();
     for (const [targetId, input] of inputs) if (input.checked) want.add(targetId);
-    const add = [...want].filter((t) => !state.shared.has(t));
+    const wantReview = (t) => (reviews.get(t) && reviews.get(t).checked ? 1 : 0);
+    // Neu oder mit geänderter Korrektur-Erlaubnis → share (setzt review bei bestehenden Freigaben)
+    const add = [...want].filter((t) => !state.shared.has(t) || state.review.get(t) !== wantReview(t));
     const remove = [...state.shared.keys()].filter((t) => !want.has(t));
     if (!add.length && !remove.length) {
       toast('Keine Änderungen.');
@@ -121,9 +133,12 @@ export async function openShareDialog(kind, id, name, ctx) {
     state.busy = true;
     err.textContent = '';
     try {
-      if (add.length) {
-        const r = await withSync(ctx, () => api.post('share', { kind, id, target_ids: add }));
+      for (const rv of [0, 1]) {
+        const group = add.filter((t) => wantReview(t) === rv);
+        if (!group.length) continue;
+        const r = await withSync(ctx, () => api.post('share', { kind, id, target_ids: group, review: rv === 1 }));
         state.shared = new Map((r.shares || []).map((s) => [s.target_id, s.id]));
+        state.review = new Map((r.shares || []).map((s) => [s.target_id, s.review ? 1 : 0]));
       }
       for (const targetId of remove) {
         const shareId = state.shared.get(targetId);

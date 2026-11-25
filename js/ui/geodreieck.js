@@ -5,6 +5,7 @@
 // Geometrie in geodreieck-geom.js; hier nur DOM und Eingabe. Benutzertexte nur über textContent.
 
 import { h } from './dom.js';
+import { measureLine } from './ruler-geom.js';
 import {
   ARC_R_MM, GEO_GRIP_R, geoBox, geoGripDist, geoEdgeAt, geoProject, hitGeo, hitGeoGrip, degreeTicks, hypTicks,
   twist, snapAngle, normDeg,
@@ -232,6 +233,8 @@ export function createGeodreieck(holder, surface) {
   const guide = {
     start: (pt) => (visible ? geoEdgeAt(state, pxPerMm(), pt, GUIDE_PX) : null),
     project: (pt, edge) => geoProject(state, pxPerMm(), pt, edge),
+
+    measure: (p0, p1) => measureLine(p0, p1, pxPerMm()),
   };
 
   // ───── Finger und Maus ─────

@@ -31,7 +31,7 @@ function set_config(array $c)
 }
 
 // Modules in a fixed order; later work packages add files, missing ones are skipped.
-foreach (['auth', 'account', 'sync', 'tree', 'share', 'assets', 'admin'] as $m) {
+foreach (['auth', 'account', 'sync', 'tree', 'share', 'assets', 'review', 'admin'] as $m) {
     if (is_file(__DIR__ . '/' . $m . '.php')) require_once __DIR__ . '/' . $m . '.php';
 }
 

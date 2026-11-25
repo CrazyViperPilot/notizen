@@ -144,3 +144,24 @@ Verbindlich: ARCHITEKTUR Abschnitt 13. **Stand: P31–P36 erledigt.**
 | P35 | Geodreieck: `geodreieck-geom.js`, `geodreieck.js`, Tests | Haiku |
 | P36 | Surface: mehrere Führungen (`addGuide`), Knopf/Taste g, E2E `geodreieck.e2e.mjs`, Release v15 | Opus |
 | P34 | PDF: Titelblatt-Seite, PDF/A-2b (XMP, ICC, ID), Verdrahtung, E2E `ruler-export.e2e.mjs`, Release v14 | Opus |
+
+---
+
+# Runde 5 (Nov 2026): Feature-Review umgesetzt
+Verbindlich: ARCHITEKTUR Abschnitt 14. **Stand: P37–P49 erledigt.**
+
+| Paket | Inhalt | Wer |
+|---|---|---|
+| P37 | Zirkel (`compass.js`, `compass-geom.js`) | Haiku |
+| P38 | Papiersorten Koordinatensystem, Millimeter, Noten, Isometrie | Haiku |
+| P39 | Formen: Pfeil, Dreieck, Vieleck | Haiku |
+| P40 | Präsentationsmodus mit Laserpointer | Haiku |
+| P41 | Ordnerfarben (Oberfläche) | Haiku |
+| P42 | Lernkartei-Logik (`leitner.js`) | Haiku |
+| P43 | Titelblatt als Seite, Export-Optionen Seitenzahlen/Lesezeichen | Haiku |
+| P44 | Migration 006, Sync (color, meta, Papiere), Abgabe/Korrektur-Backend + Tests | Opus |
+| P45 | Surface: Messanzeige, mehrere Führungen, Lasso drehen/kopieren/einfügen, Abdeckungen, Lernkartei, Ebenen | Opus |
+| P46 | Model/Editor/Toolbar: Format mit Skalieren, Lesezeichen, Titelblatt-Seite, Lineal-Länge, Messwerkzeug-Menü | Opus |
+| P47 | Korrektur-UI (Teilen-Dialog, geteilte Ansicht, Editor) | Opus |
+| P48 | PDF: Lesezeichen, Seitenzahlen, Korrekturen; CI-Job veraPDF | Opus |
+| P49 | E2E `features.e2e.mjs`, Anpassung bestehender E2E, Doku, Release v16 | Opus |

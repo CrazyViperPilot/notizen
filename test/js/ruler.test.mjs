@@ -158,3 +158,22 @@ test('ticks: no 1 mm ticks below 2 px per mm', () => {
   assert.equal(t.filter((x) => x.len === 'cm').length, 31);
   assert.equal(t.filter((x) => x.len === 'half').length, 30);
 });
+
+import { measureLine } from '../../js/ui/ruler-geom.js';
+test('measureLine: Länge in cm mit Komma, Winkel zur Waagerechten', () => {
+  assert.equal(measureLine({ x: 0, y: 0 }, { x: 50, y: 0 }, 5), '1,0 cm');
+  assert.equal(measureLine({ x: 0, y: 0 }, { x: 0, y: -100 }, 5), '2,0 cm · 90°');
+  assert.equal(measureLine({ x: 0, y: 0 }, { x: 30, y: -30 }, 1), '4,2 cm · 45°');
+  assert.equal(measureLine({ x: 0, y: 0 }, { x: -30, y: -30 }, 1), '4,2 cm · 135°');
+});
+
+import { setRulerMm, rulerLength as rLen, ticks as rTicks } from '../../js/ui/ruler-geom.js';
+test('setRulerMm: 15/20/30 cm, sonst 30 cm; Länge und Skala folgen', () => {
+  assert.equal(setRulerMm(150), 150);
+  assert.equal(rLen(2), 300);
+  assert.equal(setRulerMm(123), 300);
+  assert.equal(setRulerMm(200), 200);
+  assert.equal(rLen(1), 200);
+  setRulerMm(300);
+  assert.equal(rTicks(3, 150).filter((t) => t.label !== undefined).length, 16);
+});

@@ -127,3 +127,25 @@
 .quiz-answer .btn { min-height: 52px; font-size: 18px; padding: 0 20px; }
 .quiz-yes { background: #e3f4e8; border-color: #1e8449; color: #145a32; }
 .quiz-no { background: #fbe3e0; border-color: #c0392b; color: #7b241c; }
+
+/* Zirkel (js/ui/compass.js): Kreis und Schenkel als Canvas über der Schreibfläche, z 4, pointer-events none.
+   Position setzt der Code per transform. Die Beschriftung neben der Spitze ist ein eigenes Element (textContent). */
+.zirkel {
+  position: absolute; left: 0; top: 0; z-index: 4; pointer-events: none; touch-action: none;
+}
+.zirkel[hidden] { display: none; }
+.zirkel-label {
+  position: absolute; left: 0; top: 0; z-index: 6; pointer-events: none; padding: 2px 8px; border-radius: 10px;
+  background: rgba(255, 255, 255, .85); color: #2f5fd0; font-size: 14px; font-weight: 600;
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.zirkel-label[hidden] { display: none; }
+
+/* Messanzeige beim Zeichnen am Lineal, Geodreieck, Zirkel und beim Drehen einer Auswahl */
+.ed-measure {
+  position: absolute; left: 0; top: 0; z-index: 12; pointer-events: none; padding: 4px 10px; border-radius: 12px;
+  background: rgba(29, 35, 43, .82); color: #fff; font-size: 15px; font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.ed-measure[hidden] { display: none; }
+/* Abdeckungen (Lernen): wie die Vokabel-Abdeckung, aufgedeckt nur als Rahmen */
+.nz-cover-area.open { box-shadow: none; outline: 1.5px dashed #8fb0ef; outline-offset: -1px; }

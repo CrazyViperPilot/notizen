@@ -526,7 +526,7 @@ function backupDoc(parts, assets) {
     version: 2,
     exported_at: new Date().toISOString(),
     folders: parts.folders.map((f) => ({
-      id: f.id, parent_id: f.parent_id || null, name: f.name, created_at: f.created_at, updated_at: f.updated_at,
+      id: f.id, parent_id: f.parent_id || null, name: f.name, color: f.color || null, created_at: f.created_at, updated_at: f.updated_at,
     })),
     notes: parts.notes.map((n) => ({
       id: n.id, folder_id: n.folder_id || null, title: n.title, created_at: n.created_at, updated_at: n.updated_at,
@@ -538,6 +538,7 @@ function backupDoc(parts, assets) {
       paper: p.paper,
       orient: p.orient,
       size: p.size || 'a4',
+      meta: typeof p.meta === 'string' ? p.meta : null,
       strokes: typeof p.strokes === 'string' ? p.strokes : JSON.stringify(p.strokes || []),
       bg: p.bg && have.has(p.bg) ? p.bg : null,
       created_at: p.created_at,

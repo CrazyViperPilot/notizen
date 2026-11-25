@@ -20,8 +20,8 @@ Arbeitspakete: [`PLAN.md`](PLAN.md).
 
 ## 2. Nicht-Ziele (v1)
 - Keine Handschrifterkennung, keine Textsuche im Geschriebenen (Suche nur über Titel und Ordnernamen).
-- Keine Tastatur-Textfelder, Bilder, PDF-Import, Formen-Erkennung oder Lasso.
-- Kein gemeinsames Bearbeiten derselben Notiz durch mehrere Benutzer, Teilen nur lesend.
+- Keine Tastatur-Textfelder. (Bilder/PDF-Import, Formen-Erkennung und Lasso kamen später dazu.)
+- Kein gemeinsames Bearbeiten derselben Notiz durch mehrere Benutzer; Teilen nur lesend, außer der Korrektur-Ebene (Abschnitt 7).
 - Keine Selbstregistrierung und kein „Passwort vergessen“ per E-Mail (der Admin setzt Passwörter zurück).
 - Keine native iOS-App und keine Unterstützung der Pencil-Gesten Doppeltippen/Squeeze (im Browser nicht verfügbar).
 - Andere Geräte (Android, Desktop mit Maus) sollen funktionieren, sind aber nicht das Optimierungsziel.
@@ -65,7 +65,8 @@ Das erste Admin-Konto kommt aus GitHub-Secrets (Abschnitt 9). Weitere Admins kan
 - Eine Notiz besteht aus Seiten im Format **DIN A4** (210 × 297 mm, Standard), **DIN A5** (148 × 210 mm) oder **DIN A3** (297 × 420 mm),
   wahlweise **hoch oder quer**, beides pro Seite einstellbar (Seitenmenü „Format“). Papiermuster bleiben in echten Millimetern.
 - **Papiersorten** (pro Seite): **Blanko, Liniert** (8 mm Zeilenabstand, Rand links), **Kariert** (5 mm), **Gepunktet** (5 mm),
-  **Lineatur 1–4** (Schulhefte mit Hilfslinien, Werte anpassbar), **Rechenkästchen mit Rand**,
+  **Lineatur 1–4** (Schulhefte mit Hilfslinien, Werte anpassbar), **Rechenkästchen mit Rand**, **Koordinatensystem** (Achsen mit
+  cm-Teilung), **Millimeterpapier**, **Notenlinien**, **Isometriepapier**,
   **Vokabeln** (liniert, Trennlinie zwischen Wort und Übersetzung, schmale Spalte rechts zum Abhaken, darüber eine Zeile für Überschriften).
 - **Vokabeln abfragen:** Hat eine Notiz Vokabel-Seiten, zeigt die Werkzeugleiste „Abfragen“. Dann ist die Übersetzungs-Spalte
   abgedeckt (umschaltbar: die Wörter abdecken); Antippen einer Zeile mit Finger oder Stift deckt sie auf bzw. wieder zu,
@@ -89,8 +90,10 @@ Das erste Admin-Konto kommt aus GitHub-Secrets (Abschnitt 9). Weitere Admins kan
 - **Radierer**: Modus „Ganze Striche“ (löscht berührte Striche) oder „Teilweise“ (entfernt nur den berührten Teil).
   Stifte mit **Radier-Ende** oder **Seitentaste** (gedrückt halten beim Schreiben) radieren direkt, ohne Werkzeugwechsel –
   sofern der Browser die Taste meldet (Android/Windows oft ja, Apple Pencil hat keine). Die Spielwiese zeigt an, was der Stift meldet.
-- **Formen geraderücken**: Stift am Ende kurz ruhig halten → Linie, Kreis, Ellipse oder Rechteck.
-- **Lasso**: Striche einkreisen → verschieben, vergrößern/verkleinern, Farbe ändern, duplizieren, löschen.
+- **Formen geraderücken**: Stift am Ende kurz ruhig halten → Linie, Pfeil, Kreis, Ellipse, Rechteck (auch gedreht), Dreieck oder Vieleck.
+- **Lasso**: Striche einkreisen → verschieben, vergrößern/verkleinern, **drehen** (Griff über der Auswahl, rastet alle 15° ein),
+  Farbe ändern, duplizieren, löschen, **kopieren** und auf einer anderen Seite oder in einer anderen Notiz **einfügen**
+  (Seitenmenü „Einfügen“, Cmd/Strg+C/X/V), **abdecken** (zum Lernen).
 - **Rückgängig / Wiederholen** (pro geöffneter Notiz, bis zu 100 Schritte, gilt bis zum Schließen der Notiz).
 - Werkzeugleiste oben, kompakt, mit großen Tippflächen (mindestens 44 pt).
 
@@ -107,13 +110,30 @@ Das erste Admin-Konto kommt aus GitHub-Secrets (Abschnitt 9). Weitere Admins kan
 
 ### 6.3a Lineal
 - Transparentes **Lineal** (30 cm, mm- und cm-Skala im Maßstab der Seite) über der Schreibfläche, ein- und ausblendbar
-  (Knopf „Lineal“, Taste **r**). Mit Finger/Maus **verschieben**, mit zwei Fingern oder dem Dreh-Griff **drehen**
+  (Knopf „Messwerkzeuge“ → Lineal, Taste **r**). Mit Finger/Maus **verschieben**, mit zwei Fingern oder dem Dreh-Griff **drehen**
   (rastet bei 0°/45°/90° ein, Doppeltipp = 0°). Ein Stift-Strich, der an einer Längskante beginnt, läuft gerade an der Kante entlang.
   Lage, Winkel und an/aus werden pro Gerät gemerkt.
 - **Geodreieck** (wie im Mathematikunterricht): lange Kante 16 cm mit mm-Skala und 0 in der Mitte, Winkelmesser 0–180° in zwei
-  gegenläufigen Reihen um den Nullpunkt, Parallelen im 5-mm-Abstand, rechter Winkel an der Spitze. Knopf „Geodreieck“, Taste **g**.
+  gegenläufigen Reihen um den Nullpunkt, Parallelen im 5-mm-Abstand, rechter Winkel an der Spitze. Knopf „Messwerkzeuge“ → Geodreieck, Taste **g**.
   Verschieben und Drehen wie beim Lineal (Drehpunkt ist der Nullpunkt, Griff bei der Spitze); der Stift zeichnet an allen drei Kanten
   gerade Linien. Lineal und Geodreieck können gleichzeitig sichtbar sein.
+
+- **Zirkel**: Einstichpunkt und Radius (mm-genau, „r = 3,5 cm“) einstellen; der Stift zeichnet am Kreis exakte Bögen. Taste **z**.
+- Lineal, Geodreieck und Zirkel liegen gemeinsam hinter dem Knopf **„Messwerkzeuge“** (Tasten r, g, z). Beim Zeichnen an einem
+  Messwerkzeug zeigt eine **Messanzeige** Länge und Winkel (bzw. Radius und Bogen), beim Drehen einer Auswahl den Winkel.
+  Die Lineal-Länge (15, 20 oder 30 cm) ist im Konto einstellbar.
+
+### 6.3b Lernen, Lesezeichen, Präsentieren
+- **Lernkartei**: Die Vokabel-Abfrage merkt sich je Zeile ein Fach (1–5, Leitner); „Gewusst“ rückt ein Fach weiter, „Nicht gewusst“
+  zurück in Fach 1. „Nächste“ fragt fällige Vokabeln aus niedrigen Fächern bevorzugt. Das Häkchen wird gesetzt, sobald eine Vokabel
+  Fach 5 erreicht. Der Lernstand wird gespeichert und synchronisiert; die Leiste zeigt „Fächer 3·2·1·0·0“.
+- **Abdecken**: Auf jeder Seite Bereiche mit dem Lasso abdecken; in „Abfragen“ sind sie zugedeckt und lassen sich antippen.
+  „Abdeckungen dieser Seite entfernen“ im Seitenmenü.
+- **Lesezeichen**: Seiten benennen (Seitenmenü), Sprungliste „Lesezeichen anzeigen…“; im PDF als Inhaltsverzeichnis.
+- **Titelblatt einfügen**: Vorlage wie beim Export, wird eine neue erste Seite (darauf schreibbar).
+- **Präsentieren**: Seite für Seite im Vollbild, blättern mit Wischen/Tasten, **Laserpointer** (rote, verblassende Spur, nichts wird gespeichert).
+- **Format ändern** fragt bei beschriebenen Seiten, ob der Inhalt mitskaliert werden soll.
+- **Fächerfarben**: Ordner farbig markieren (8 Farben); Notizen zeigen die Farbe ihres Ordners.
 
 ### 6.4 Speichern
 - **Automatisch**, ohne Speichern-Knopf. Lokal spätestens 1 s nach dem letzten Strich, auf dem Server
@@ -126,6 +146,7 @@ Das erste Admin-Konto kommt aus GitHub-Secrets (Abschnitt 9). Weitere Admins kan
   - **Titelblatt** aus einer Vorlage voranstellen („Klassisch“, „Schulheft“, „Schlicht“) mit Feldern (Titel, Untertitel, Name, Datum,
     Fach, Klasse, Schuljahr je nach Vorlage) und Vorschau; Format wie die erste Seite. Die letzte Wahl wird gemerkt.
   - **PDF/A** (PDF/A-2b, Archivformat) wahlweise.
+  - **Seitenzahlen** und **Lesezeichen** (Inhaltsverzeichnis) wahlweise. Korrekturen (Abschnitt 7) werden mit exportiert, wenn sie eingeblendet sind.
 - **Backup**: Export aller eigenen Notizen als eine Datei (`.notizen`) und **Import** einer solchen Datei.
   Importierte Inhalte landen als Kopie in einem neuen Ordner „Import <Datum>“.
 
@@ -137,6 +158,9 @@ Das erste Admin-Konto kommt aus GitHub-Secrets (Abschnitt 9). Weitere Admins kan
   zoomen und als PDF exportieren, aber nichts ändern.
 - Zuletzt geöffnete geteilte Notizen sind auch **offline lesbar** (Zwischenspeicher, kein Sync-Ziel).
 - Gelöschte oder nicht mehr geteilte Inhalte verschwinden beim Empfänger beim nächsten Online-Abruf.
+- **Abgabe und Korrektur**: Im Teilen-Dialog je Person „Korrigieren“ erlauben. Diese Person kann in der geteilten Ansicht
+  „Korrigieren“ einschalten und mit Rotstift, Grün, Textmarker und Radierer in einer **eigenen Ebene** schreiben (nur online,
+  die Schrift des Besitzers bleibt unverändert). Der Besitzer sieht die Korrekturen im Editor obenauf, kann sie ausblenden und je Seite entfernen.
 
 ## 8. Admin-Bereich (`/notizen/admin.html`, nur online)
 - **Benutzerliste** mit Benutzername, Anzeigename, Rolle, Status (aktiv/gesperrt), letzter Anmeldung,

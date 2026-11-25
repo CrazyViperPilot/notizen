@@ -6,7 +6,8 @@
 import { openDb, deleteDb } from './db.js';
 import { createSync } from './sync.js';
 import { api } from './api.js';
-import { PAGE_SIZES } from './config.js';
+import { PAGE_SIZES, pageDims } from './config.js';
+import { decodeStrokes, encodeStrokes } from './ink/codec.js';
 
 const STORE = { folder: 'folders', note: 'notes', page: 'pages' };
 const NOTE_TOUCH_MS = 60000;
@@ -127,6 +128,13 @@ export async function createFolder({ name, parentId = null }) {
 export async function renameFolder(id, name) {
   const f = await getFolder(id);
   if (f) return write('folder', { ...f, name: cleanName(name, f.name) });
+}
+
+/** Fächerfarbe eines Ordners: "#rrggbb" oder null. */
+export async function setFolderColor(id, color) {
+  const f = await getFolder(id);
+  const c = typeof color === 'string' && /^#[0-9a-f]{6}$/i.test(color) ? color.toLowerCase() : null;
+  if (f && (f.color || null) !== c) return write('folder', { ...f, color: c });
 }
 
 export async function moveFolder(id, parentId) {
@@ -369,11 +377,29 @@ export async function deletePage(id) {
   await touchNote(p.note_id, true);
 }
 
-/** Paper, orientation and format of a page (orient/size omitted = unchanged). */
-export async function setPaper(id, paper, orient, size) {
+/**
+ * Paper, orientation and format of a page (orient/size omitted = unchanged). scale: true → strokes (and covered areas)
+ * are scaled to the new page width/height (proportional, the smaller factor), e.g. A4 → A5.
+ */
+export async function setPaper(id, paper, orient, size, { scale = false } = {}) {
   const p = await getPage(id);
   const sz = PAGE_SIZES.includes(size) ? size : PAGE_SIZES.includes(p && p.size) ? p.size : 'a4';
-  if (p && typeof p.strokes === 'string') return write('page', { ...p, paper, orient: orient || p.orient, size: sz });
+  if (!p || typeof p.strokes !== 'string') return;
+  const o = orient || p.orient;
+  let { strokes, meta } = p;
+  if (scale) {
+    const a = pageDims(p.size, p.orient), b = pageDims(sz, o);
+    const f = Math.min(b.w / a.w, b.h / a.h);
+    if (Math.abs(f - 1) > 1e-6) {
+      strokes = scaleStrokes(strokes, f);
+      const m = pageMeta(p);
+      if (Array.isArray(m.covers)) {
+        m.covers = m.covers.map((c) => c.map((v) => Math.round(v * f)));
+        meta = JSON.stringify(m);
+      }
+    }
+  }
+  return write('page', { ...p, paper, orient: o, size: sz, strokes, bytes: strokes.length, meta: meta === undefined ? null : meta });
 }
 
 export async function saveStrokes(pageId, strokes) {
@@ -489,4 +515,64 @@ function cleanName(s, fallback) {
 
 function defaultTitle() {
   return new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+
+// ───────────────────────── page metadata (meta: JSON, docs/ARCHITEKTUR.md 14.2) ─────────────────────────
+
+/** Strich-String mit allen Koordinaten × f (Druck bleibt). */
+export function scaleStrokes(str, f) {
+  const list = decodeStrokes(str);
+  for (const s of list) {
+    const pts = s.pts;
+    for (let i = 0; i < pts.length; i += 3) { pts[i] = Math.round(pts[i] * f); pts[i + 1] = Math.round(pts[i + 1] * f); }
+  }
+  return encodeStrokes(list);
+}
+
+/** Parsed meta of a page row: {label?, learn?, covers?}; anything broken → {}. */
+export function pageMeta(page) {
+  if (!page || typeof page.meta !== 'string' || !page.meta) return {};
+  try {
+    const m = JSON.parse(page.meta);
+    return m && typeof m === 'object' && !Array.isArray(m) ? m : {};
+  } catch { return {}; }
+}
+
+/**
+ * Merges `patch` into the page's meta (a key with value null/undefined is removed) and saves it.
+ * label: string ≤ 80 characters (Lesezeichen), learn: Lernstand (ink/leitner.js), covers: [[x, y, w, h], …] (Abdeckungen).
+ */
+export async function setPageMeta(pageId, patch) {
+  const p = await getPage(pageId);
+  if (!p) return null;
+  const m = pageMeta(p);
+  for (const [k, v] of Object.entries(patch || {})) {
+    if (v === null || v === undefined || v === '') delete m[k];
+    else m[k] = k === 'label' ? String(v).replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, 80) : v;
+  }
+  const meta = Object.keys(m).length ? JSON.stringify(m) : null;
+  if (meta && meta.length > 32000) throw new Error('Seiten-Daten zu groß');
+  if ((p.meta || null) === meta) return p;
+  return write('page', { ...p, meta });
+}
+
+/** Pages of a note with a bookmark (meta.label): [{page, label, index}]. */
+export async function listBookmarks(noteId) {
+  const pages = await listPages(noteId);
+  const out = [];
+  pages.forEach((p, index) => { const l = pageMeta(p).label; if (typeof l === 'string' && l) out.push({ page: p, label: l, index }); });
+  return out;
+}
+
+/** New first page with an image background (Titelblatt): blob = JPEG, paper blank, format/orientation as given. */
+export async function addCoverPage(noteId, { blob, w, h, size = 'a4', orient = 'p' }) {
+  const id = await sha256hex(blob);
+  if (!(await need().get('assets', id))) {
+    await need().put('assets', { id, blob, mime: 'image/jpeg', w, h, uploaded: 0, at: Date.now() });
+  }
+  const pages = await listPages(noteId);
+  const pos = (pages.length ? pages[0].pos : 1) - 1;
+  const page = await write('page', { ...newPage(noteId, pos, 'blank', orient === 'l' ? 'l' : 'p', Date.now(), size), bg: id }, { touch: false });
+  await touchNote(noteId, true);
+  return page;
 }

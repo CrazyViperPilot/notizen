@@ -1,7 +1,7 @@
 // Notizen – Service Worker: app shell offline. Notes live in IndexedDB (not here); api.php and admin.html are never cached.
 // Release: bump CACHE_NAME. test/js/sw.test.mjs checks that SHELL lists every app file.
 
-const CACHE_NAME = 'notizen-v15';
+const CACHE_NAME = 'notizen-v16';
 const PREFIX = 'notizen-';
 
 const SHELL = [
@@ -20,6 +20,7 @@ const SHELL = [
   'css/share.css',
   'css/account.css',
   'css/export.css',
+  'css/present.css',
   'js/app.js',
   'js/api.js',
   'js/config.js',
@@ -32,6 +33,7 @@ const SHELL = [
   'js/ink/stroke.js',
   'js/ink/surface.js',
   'js/ink/shapes.js',
+  'js/ink/leitner.js',
   'js/ui/dom.js',
   'js/ui/login.js',
   'js/ui/status.js',
@@ -47,6 +49,9 @@ const SHELL = [
   'js/ui/ruler-geom.js',
   'js/ui/geodreieck.js',
   'js/ui/geodreieck-geom.js',
+  'js/ui/compass.js',
+  'js/ui/compass-geom.js',
+  'js/ui/present.js',
   'js/ui/export-dialog.js',
   'js/ui/share.js',
   'js/ui/shared.js',

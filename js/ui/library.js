@@ -50,6 +50,31 @@ async function loadBadge(model) {
   } catch { return null; }
 }
 
+// ───────────── Fächerfarben (Ordner) ─────────────
+// Gespeichert wird "#rrggbb" über model.setFolderColor; die Namen dienen nur der Anzeige und Bedienhilfe.
+export const FOLDER_COLORS = [
+  { name: 'Blau', hex: '#2f5fd0' },
+  { name: 'Rot', hex: '#d0342c' },
+  { name: 'Grün', hex: '#2e8b57' },
+  { name: 'Gelb', hex: '#e0a800' },
+  { name: 'Orange', hex: '#ef7d22' },
+  { name: 'Lila', hex: '#7d3c98' },
+  { name: 'Türkis', hex: '#0a8f8f' },
+  { name: 'Grau', hex: '#6b7280' },
+];
+
+/** Gültige Ordnerfarbe als "#rrggbb" (kleingeschrieben), sonst null. Nur so geprüfte Werte gehen in den Style. */
+export function validFolderColor(c) {
+  return typeof c === 'string' && /^#[0-9a-f]{6}$/i.test(c) ? c.toLowerCase() : null;
+}
+
+/** Setzt die CSS-Variable --folder-color und die Klasse has-color, sofern die Farbe gültig ist. */
+function applyFolderColor(el, color) {
+  const c = validFolderColor(color);
+  if (c) { el.style.setProperty('--folder-color', c); el.classList.add('has-color'); }
+  return el;
+}
+
 // ───────────── reine Hilfsfunktionen ─────────────
 
 const today = () => new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
@@ -342,6 +367,7 @@ export async function mountLibrary(el, params, ctx) {
               'aria-label': isOpen ? 'Einklappen' : 'Ausklappen', 'aria-expanded': String(isOpen),
               onclick: (e) => { e.stopPropagation(); setOpen(f.id, !isOpen); } })
             : h('span', { className: 'toggle-gap', 'aria-hidden': 'true' }),
+          applyFolderColor(h('span', { className: 'tree-ico', 'aria-hidden': 'true' }), f.color),
           h('button', { className: 'tree-name', type: 'button', text: f.name, title: f.name,
             'aria-current': current ? 'page' : null, onclick: () => ctx.navigate('#/f/' + f.id) })));
         if (isOpen) walk(f.id, depth + 1);
@@ -432,6 +458,7 @@ export async function mountLibrary(el, params, ctx) {
         h('div', { className: 'title', text: f.name }),
         st.searching ? h('div', { className: 'where', text: pathText(f.parent_id) }) : null),
       moreButton('folder', f));
+    applyFolderColor(tile, f.color);
     attachGestures(tile, (x, y) => openMenu({ x, y }, 'folder', f), () => ctx.navigate('#/f/' + f.id));
     return tile;
   }
@@ -455,6 +482,9 @@ export async function mountLibrary(el, params, ctx) {
         h('div', { className: 'title', text: note.title }),
         h('div', { className: 'when', text: relTime(note.updated_at) }),
         st.searching ? h('div', { className: 'where', text: pathText(note.folder_id) }) : null));
+    // Notiz in einem farbigen Ordner: schmaler Streifen in der Farbe des direkten Ordners (auch in Favoriten/Zuletzt).
+    const folder = note.folder_id ? st.byId.get(note.folder_id) : null;
+    applyFolderColor(tile, folder ? folder.color : null);
     attachGestures(tile, (x, y) => openMenu({ x, y }, 'note', note), () => ctx.navigate('#/n/' + note.id));
     return tile;
   }
@@ -465,6 +495,9 @@ export async function mountLibrary(el, params, ctx) {
       { label: 'Umbenennen', icon: '✏️', onSelect: () => rename(kind, item) },
       { label: 'Verschieben…', icon: '📂', onSelect: () => move(kind, item) },
     ];
+    if (kind === 'folder' && typeof model.setFolderColor === 'function') {
+      items.push({ label: 'Farbe…', icon: '🎨', onSelect: () => pickColor(item) });
+    }
     if (kind === 'note') {
       items.push({ label: item.pinned ? 'Aus Favoriten entfernen' : 'Zu Favoriten', icon: '★', onSelect: () => togglePin(item) });
     }
@@ -533,6 +566,32 @@ export async function mountLibrary(el, params, ctx) {
       else await model.moveNote(item.id, selected);
       toast('Verschoben');
     } catch (e) { fail(e); }
+  }
+
+  /** Dialog „Ordnerfarbe“: ein Farbfeld antippen wählt und speichert sofort, „Keine Farbe“ entfernt die Farbe. */
+  async function pickColor(folder) {
+    if (typeof model.setFolderColor !== 'function') { toast('Farben kommen bald'); return; }
+    const current = validFolderColor((st.byId.get(folder.id) || folder).color);
+    const choice = await dialog({
+      title: 'Ordnerfarbe',
+      body: (close) => {
+        const swatch = ({ name, hex }) => {
+          const on = hex === current;
+          const dot = h('span', { className: 'swatch-dot', 'aria-hidden': 'true' });
+          dot.style.setProperty('--swatch', hex);
+          return h('button', { className: 'swatch' + (on ? ' on' : ''), type: 'button', title: name,
+            'aria-label': name, 'aria-pressed': String(on), onclick: () => close({ color: hex }) },
+          dot, h('span', { className: 'swatch-name', text: name }));
+        };
+        return h('div', { className: 'swatch-dialog' },
+          h('div', { className: 'swatch-grid' }, FOLDER_COLORS.map(swatch)),
+          h('button', { className: 'btn swatch-none', type: 'button', text: 'Keine Farbe',
+            'aria-pressed': String(current === null), onclick: () => close({ color: null }) }));
+      },
+      actions: [{ label: 'Abbrechen', value: null }],
+    });
+    if (!choice || choice.color === current) return;
+    try { await model.setFolderColor(folder.id, choice.color); } catch (e) { fail(e); }
   }
 
   async function togglePin(note) {

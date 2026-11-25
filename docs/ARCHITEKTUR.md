@@ -574,3 +574,43 @@ Werkzeug `'pencil'` (Name „Bleistift“, Taste **b**). Strich-Typ `"b"` im For
 - PDF/A-2b: Kopf `%PDF-1.7`, XMP-Metadaten (`pdfaid:part 2`, `conformance B`, Titel/Datum/Producer wie im Info-Dictionary),
   OutputIntent `GTS_PDFA1` mit selbst erzeugtem sRGB-ICC-v2-Profil (`srgbIcc()`), `/ID` im Trailer. Transparenz (Textmarker, Bleistift)
   ist in PDF/A-2 erlaubt. CMYK-Hintergrundbilder werden im PDF/A weggelassen (der Import erzeugt nur RGB-JPEGs).
+
+## 14. Runde 5: Zirkel, Lernen, Lesezeichen, Präsentation, Abgabe/Korrektur (Nov 2026)
+
+### 14.1 Datenbank (Migration 006)
+- `pages.paper` um `coord`, `mm`, `music`, `iso`; `pages.meta TEXT NULL` (JSON-Objekt ≤ 32 KB); `folders.color CHAR(7) NULL` (`#rrggbb`);
+  `shares.review TINYINT` (darf korrigieren); Tabelle `corrections (page_id, reviewer_id) → owner_id, note_id, strokes, updated_at`.
+- Sync: `color` (Ordner) und `meta` (Seite) wie `size`: fehlt das Feld (ältere Clients), bleibt der gespeicherte Wert (`NZ_KEEP`).
+  Ungültige Werte → `rejected`/`invalid`.
+
+### 14.2 Seiten-Metadaten `meta`
+`{label?: string ≤ 80 (Lesezeichen), learn?: {v: 1, rows: {zeile: {b, t, n, k}}} (Lernkartei, ink/leitner.js), covers?: [[x, y, w, h], …] (Abdeckungen, 0,1 mm)}`.
+Model: `pageMeta(page)`, `setPageMeta(id, patch)` (null entfernt einen Schlüssel), `listBookmarks(noteId)`. Backup und Admin-Export enthalten `meta` und `color`.
+
+### 14.3 Zeichenfläche
+- Führungen: `addGuide/removeGuide` (mehrere: Lineal, Geodreieck, Zirkel); geführte Striche ohne Glättung. Optional `guide.measure(p0, p1, edge)`
+  → Text; die Surface meldet Event `'measure'` `{text, x, y}` bzw. `null` am Strichende. Zirkel: `js/ui/compass.js` (+ `compass-geom.js`).
+- Lasso: Modus `'rotate'` (Griff 25 px über der Auswahlmitte, Raster 15°), `copySelection()` → `{v, w, h, strokes}`, `paste(clip)` (sichtbarer
+  Bereich der aktuellen Seite), `selectionBounds()`. Zwischenablage: `localStorage['notizen:clipboard']` (≤ 2 MB).
+- Seitenzeilen in `setPages` dürfen tragen: `under`/`over` (Strich-Strings fremder Ebenen, nicht bearbeitbar), `covers`, `learn`.
+- Abfragen: Abdeckungen (`.nz-cover-area`) auf jeder Seite; Lernkartei: `quizNext` wählt über `pickNext`, `quizAnswer` meldet `'learn'`
+  `{pageId, learn}`; Häkchen erst bei Fach 5. `hasQuiz()` = Vokabelseiten oder Abdeckungen. `setReadOnly(on)`.
+
+### 14.4 PDF
+`notePdf/buildPdf` mit `outline` (Lesezeichen aus `page.label`, `/Outlines` + `/PageMode /UseOutlines`), `numberImage(text)` (Seitenzahl als
+1-Bit-`/ImageMask`, unten mittig, nicht auf dem Titelblatt), `page.over` (Korrekturen über der Schrift). CI-Job `pdfa`: `test/pdfa/samples.mjs`
+erzeugt Beispiele, veraPDF (Docker `verapdf/cli`) prüft PDF/A-2b.
+
+### 14.5 Abgabe und Korrektur (`backend/review.php`)
+- `share` nimmt `review` (bool) an und setzt es auch bei bestehenden Freigaben; `shares_of` liefert `review`; `shared_pages` liefert `can_review`.
+- `can_read_note($uid, $note, $review = true)` zählt nur Freigaben mit `review = 1` (direkt oder über einen Ordner) und gibt dem Besitzer `null`.
+- `correction_get?note` (Besitzer: alle Korrekturen mit Namen; Korrektor: nur eigene; reiner Leser: keine), `correction_save {note, page, strokes}`
+  (nur Korrektor, lebende Seite der Notiz, ≤ 2 MB, `'[]'` löscht), `correction_clear {note, page?, reviewer_id?}` (nur Besitzer).
+  Gelöschte Seiten blenden Korrekturen aus; Konto-Löschung entfernt sie (Fremdschlüssel). Nur online, kein Sync.
+- UI: `share.js` (Häkchen „Korrigieren“ je Person), `shared.js` (Knopf „Korrigieren“: Fläche schreibbar, Seite als `under`), Editor (`over`,
+  Menü „Korrekturen ausblenden/entfernen“).
+
+### 14.6 Weitere Module
+`js/ui/present.js` (Präsentation, Laser), `js/ink/leitner.js`, `js/export/cover.js` (`renderCoverImage`, `pageNumberImage`),
+`js/ui/export-dialog.js` (`openCoverDialog`, Optionen `pageNumbers`, `outline`), `js/ink/shapes.js` (zusätzlich `arrow`, `triangle`, `polygon`),
+Ordnerfarben in `js/ui/library.js`. Werkzeugleiste: ein Knopf „Messwerkzeuge“ (Menü), Seitenmenü mit Untermenü „Papier und Format…“.

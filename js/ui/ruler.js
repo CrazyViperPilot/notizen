@@ -6,7 +6,7 @@
 
 import { h } from './dom.js';
 import {
-  RULER_MM, RULER_H, GRIP_R, GRIP_INSET, rulerLength, edgeAt, projectToEdge, hitRuler, hitGrip, twist, snapAngle, normDeg, ticks,
+  RULER_MM, RULER_H, measureLine, setRulerMm, GRIP_R, GRIP_INSET, rulerLength, edgeAt, projectToEdge, hitRuler, hitGrip, twist, snapAngle, normDeg, ticks,
 } from './ruler-geom.js';
 
 const KEY = 'notizen:ruler';
@@ -96,6 +96,7 @@ function drawRuler(canvas, s) {
  * holder = .ed-surface (Container der Surface), surface = Surface aus js/ink/surface.js.
  */
 export function createRuler(holder, surface) {
+  try { const p = JSON.parse(localStorage.getItem('notizen:prefs')); setRulerMm(p && p.rulerMm); } catch { setRulerMm(300); }
   const body = holder.parentElement || holder;   // .ed-body: Capture-Listener, bevor die Surface Zeiger sieht
   const stored = loadState();
   let state = stored ? { x: stored.x, y: stored.y, angle: stored.angle } : { x: 0, y: 0, angle: 0 };
@@ -150,6 +151,8 @@ export function createRuler(holder, surface) {
   const guide = {
     start: (pt) => (visible ? edgeAt(state, pxPerMm(), pt, GUIDE_PX) : null),
     project: (pt, edge) => projectToEdge(state, pt, edge),
+
+    measure: (p0, p1) => measureLine(p0, p1, pxPerMm()),
   };
 
   // ───── Finger und Maus ─────

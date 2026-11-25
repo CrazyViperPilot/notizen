@@ -91,6 +91,19 @@ export async function mountAccount(el, params, ctx) {
     },
   }));
 
+  // Lineal-Länge (15, 20 oder 30 cm), gilt beim nächsten Öffnen einer Notiz
+  const rulerLens = [[150, '15 cm'], [200, '20 cm'], [300, '30 cm']];
+  const rulerNow = [150, 200, 300].includes(prefs.rulerMm) ? prefs.rulerMm : 300;
+  const rulerBtns = rulerLens.map(([mm, label]) => h('button', {
+    type: 'button', className: 'btn' + (mm === rulerNow ? ' on' : ''), text: label, 'aria-pressed': mm === rulerNow ? 'true' : 'false',
+    onclick: () => {
+      const p = readPrefs();
+      p.rulerMm = mm;
+      writePrefs(p);
+      rulerBtns.forEach((b, i) => { const on = rulerLens[i][0] === mm; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); });
+    },
+  }));
+
   const root = h('div', { className: 'acc' },
     h('header', { className: 'acc-head' },
       h('button', { className: 'btn ghost acc-back', type: 'button', text: '‹ Übersicht', onclick: () => ctx.navigate('#/') }),
@@ -122,6 +135,7 @@ export async function mountAccount(el, params, ctx) {
           drawInput),
         h('p', { className: 'muted acc-hint', text: 'Für Geräte ohne Apple Pencil. Dann scrollst du mit zwei Fingern.' }),
         h('div', { className: 'acc-row' }, h('span', { text: 'Glättung der Schrift' }), h('div', { className: 'acc-seg', role: 'group', 'aria-label': 'Glättung' }, smoothBtns)),
+        h('div', { className: 'acc-row' }, h('span', { text: 'Länge des Lineals' }), h('div', { className: 'acc-seg', role: 'group', 'aria-label': 'Länge des Lineals' }, rulerBtns)),
         h('p', { className: 'muted acc-hint', text: '„Direkt“ folgt dem Stift ganz genau, „Stark“ macht zittrige Linien ruhiger. Gilt beim nächsten Öffnen einer Notiz.' }),
         h('p', { className: 'muted acc-hint', text: 'Gesten: mit zwei Fingern tippen = Rückgängig, mit drei Fingern = Wiederholen, lange mit dem Finger auf einen Strich drücken = dessen Farbe übernehmen, schnell mit zwei Fingern zusammenziehen = ganze Seite. Bleistift: Apple Pencil schräg halten = breiter, weicher Strich zum Schraffieren.' })),
       user.role === 'admin'

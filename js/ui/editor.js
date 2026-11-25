@@ -11,11 +11,33 @@ import { decodeStrokes, encodeStrokes } from '../ink/codec.js';
 import { createToolbar } from './toolbar.js';
 import { createRuler } from './ruler.js';
 import { createGeodreieck } from './geodreieck.js';
-import { h, toast, confirmDialog, dialog } from './dom.js';
+import { createCompass } from './compass.js';
+import { h, toast, confirmDialog, dialog, menu, promptText } from './dom.js';
+import { serializeLearn } from '../ink/leitner.js';
 import { PEN_COLORS, PEN_COLOR_NAMES, HL_COLORS, HL_COLOR_NAMES } from '../config.js';
 
 const PREFS_KEY = 'notizen:prefs';
 const RELOAD_MS = 300;
+const CLIP_KEY = 'notizen:clipboard';   // Lasso-Zwischenablage (über Notizen hinweg, nur dieses Gerät)
+const CLIP_MAX = 2000000;
+
+function readClip() {
+  try {
+    const v = JSON.parse(localStorage.getItem(CLIP_KEY));
+    return v && v.v === 1 && Array.isArray(v.strokes) ? v : null;
+  } catch { return null; }
+}
+
+/** Corrections (api correction_get) → Map pageId → strokes string (all reviewers, merged). */
+function correctionsByPage(list) {
+  const out = new Map();
+  for (const c of list || []) {
+    if (!c || typeof c.strokes !== 'string' || typeof c.page_id !== 'string') continue;
+    const prev = out.get(c.page_id);
+    out.set(c.page_id, prev ? encodeStrokes([...decodeStrokes(prev), ...decodeStrokes(c.strokes)]) : c.strokes);
+  }
+  return out;
+}
 
 function smoothingPref() {
   try {
@@ -74,6 +96,7 @@ export async function mountEditor(el, { noteId }, ctx) {
     onQuiz: () => (quizSide ? stopQuiz() : startQuiz('right')),
     onRuler: () => { ruler.toggle(); toolbar.setRuler(ruler.isVisible()); },
     onGeo: () => { geo.toggle(); toolbar.setGeo(geo.isVisible()); },
+    onCompass: () => { compass.toggle(); toolbar.setCompass(compass.isVisible()); },
   });
   const holder = h('div', { className: 'ed-surface' });
   const hint = h('div', { className: 'ed-hint', role: 'status', hidden: true, text: 'Seite wird geladen…' });
@@ -97,7 +120,8 @@ export async function mountEditor(el, { noteId }, ctx) {
     h('button', { type: 'button', className: 'btn', text: 'Alle aufdecken', onclick: () => { quizAnswer.hidden = true; surface.quizAll(true); } }),
     h('button', { type: 'button', className: 'btn', text: 'Alle zudecken', onclick: () => { quizAnswer.hidden = true; surface.quizAll(false); } }),
     h('button', { type: 'button', className: 'btn primary', text: 'Fertig', onclick: () => stopQuiz() }));
-  el.replaceChildren(toolbar.el, h('div', { className: 'ed-body' }, holder, hint, quizBar));
+  const measureEl = h('div', { className: 'ed-measure', 'aria-live': 'off', hidden: true });
+  el.replaceChildren(toolbar.el, h('div', { className: 'ed-body' }, holder, hint, quizBar, measureEl));
 
   // ───── lasso selection: action bar above the selection ─────
   const selBar = h('div', { className: 'sel-bar', role: 'toolbar', 'aria-label': 'Auswahl', hidden: true });
@@ -110,6 +134,8 @@ export async function mountEditor(el, { noteId }, ctx) {
     selBar.replaceChildren(
       h('button', { type: 'button', className: 'btn', text: 'Farbe', onclick: () => pickSelColor() }),
       h('button', { type: 'button', className: 'btn', text: 'Duplizieren', onclick: () => surface.selectionAction('duplicate') }),
+      h('button', { type: 'button', className: 'btn', text: 'Kopieren', onclick: () => copySel() }),
+      h('button', { type: 'button', className: 'btn', text: 'Abdecken', title: 'Bereich zum Lernen abdecken', onclick: () => coverSel() }),
       h('button', { type: 'button', className: 'btn', text: 'Löschen', onclick: () => surface.selectionAction('delete') }));
     selBar.hidden = false;
     const r = info.rect;
@@ -138,7 +164,51 @@ export async function mountEditor(el, { noteId }, ctx) {
   }
 
 
+  function copySel(silent = false) {
+    const clip = surface.copySelection();
+    if (!clip) return false;
+    try {
+      const s = JSON.stringify(clip);
+      if (s.length > CLIP_MAX) { toast('Auswahl zu groß zum Kopieren', { type: 'error' }); return false; }
+      localStorage.setItem(CLIP_KEY, s);
+    } catch { toast('Kopieren nicht möglich', { type: 'error' }); return false; }
+    if (!silent) toast('Kopiert – „Einfügen“ im Seitenmenü oder Cmd/Strg+V', { ms: 1800 });
+    refreshPageInfo();
+    return true;
+  }
+
+  function pasteClip() {
+    const clip = readClip();
+    if (!clip) { toast('Nichts zum Einfügen'); return; }
+    if (!surface.paste(clip)) toast('Einfügen nicht möglich', { type: 'error' });
+  }
+
+  /** Lasso-Auswahl → Abdeckung (Rechteck um die Auswahl, 2 mm Rand), gespeichert in meta.covers der Seite. */
+  async function coverSel() {
+    const b = surface.selectionBounds();
+    if (!b) return;
+    const p = pages.find((x) => x.id === b.pageId);
+    if (!p) return;
+    const pad = 20;
+    const [x0, y0, x1, y1] = b.box;
+    const covers = Array.isArray(model.pageMeta(p).covers) ? model.pageMeta(p).covers.slice(0, 199) : [];
+    covers.push([Math.round(x0 - pad), Math.round(y0 - pad), Math.round(x1 - x0 + 2 * pad), Math.round(y1 - y0 + 2 * pad)]);
+    try {
+      await model.setPageMeta(p.id, { covers });
+      surface.clearSelection();
+      toast('Abgedeckt – mit „Abfragen“ lernen', { ms: 1800 });
+    } catch (e) { console.error(e); toast('Abdecken fehlgeschlagen', { type: 'error' }); }
+  }
+
   function onSelKey(ev) {
+    const a0 = document.activeElement;
+    const typing = a0 && (a0.tagName === 'INPUT' || a0.tagName === 'TEXTAREA' || a0.isContentEditable);
+    if ((ev.metaKey || ev.ctrlKey) && !ev.altKey && !typing && !document.querySelector('.nz-backdrop')) {
+      const k = (ev.key || '').toLowerCase();
+      if (k === 'c' && selInfo) { ev.preventDefault(); copySel(); return; }
+      if (k === 'x' && selInfo) { ev.preventDefault(); if (copySel(true)) surface.selectionAction('delete'); return; }
+      if (k === 'v' && readClip()) { ev.preventDefault(); pasteClip(); return; }
+    }
     if (!selInfo || (ev.key !== 'Backspace' && ev.key !== 'Delete')) return;
     const a = document.activeElement;
     if (a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA')) return;
@@ -149,7 +219,9 @@ export async function mountEditor(el, { noteId }, ctx) {
   function updateQuizCount() {
     if (!quizSide) return;
     const s = surface.quizStats();
-    quizCount.textContent = s.filled ? `gekonnt: ${s.known} von ${s.filled}` : 'noch keine Vokabeln';
+    const boxes = s.filled ? ` · Fächer ${s.boxes.join('·')}` : '';
+    quizCount.textContent = s.filled ? `gekonnt: ${s.known} von ${s.filled}${boxes}`
+      : (s.areas ? `${s.areas} Abdeckung${s.areas === 1 ? '' : 'en'} – antippen zum Aufdecken` : 'noch keine Vokabeln');
     quizRound.textContent = roundRight + roundWrong ? `Runde: ${roundRight} ✓ · ${roundWrong} ✗` : '';
   }
 
@@ -185,7 +257,7 @@ export async function mountEditor(el, { noteId }, ctx) {
     quizSide = null;
     surface.setQuiz(null);
     quizBar.hidden = true;
-    toolbar.setQuiz(surface.hasVocab(), false);
+    toolbar.setQuiz(surface.hasQuiz(), false);
   }
 
   const surface = createSurface(holder, { fingerDraw: fingerDrawPref(), smoothing: smoothingPref(), getImage: (id) => model.getImage(id, { noteId }) });
@@ -200,7 +272,22 @@ export async function mountEditor(el, { noteId }, ctx) {
     toast('Farbe übernommen', { ms: 1200 });
   });
   surface.addEventListener('selection', (e) => renderSelBar(e.detail));
-  surface.addEventListener('quiz', (e) => { quizAnswer.hidden = !(quizSide && e.detail && e.detail.open); });
+  surface.addEventListener('quiz', (e) => { quizAnswer.hidden = !(quizSide && e.detail && e.detail.open && e.detail.row != null); });
+  // Lernkartei: Lernstand der Seite speichern (meta.learn, synchronisiert)
+  surface.addEventListener('learn', (e) => {
+    const { pageId, learn } = e.detail;
+    let obj = null;
+    try { obj = JSON.parse(serializeLearn(learn)); } catch { obj = null; }
+    if (obj) track(model.setPageMeta(pageId, { learn: obj }));
+  });
+  // Messanzeige beim Zeichnen am Lineal/Geodreieck/Zirkel und beim Drehen einer Auswahl
+  surface.addEventListener('measure', (e) => {
+    const d = e.detail;
+    if (!d) { measureEl.hidden = true; return; }
+    measureEl.textContent = d.text;
+    measureEl.hidden = false;
+    measureEl.style.transform = `translate(${Math.round(d.x + 18)}px, ${Math.round(d.y - 44)}px)`;
+  });
   document.addEventListener('keydown', onSelKey);
   toolbar.setTitle(note.title);
   model.noteOpened(noteId);
@@ -211,6 +298,9 @@ export async function mountEditor(el, { noteId }, ctx) {
   // Geodreieck: wie das Lineal, Zustand in 'notizen:geodreieck'.
   const geo = createGeodreieck(holder, surface);
   toolbar.setGeo(geo.isVisible());
+  // Zirkel: Einstich und Radius, Zustand in 'notizen:zirkel'.
+  const compass = createCompass(holder, surface);
+  toolbar.setCompass(compass.isVisible());
 
   // ───── state ─────
   let pages = [];                       // model rows in page order
@@ -222,6 +312,8 @@ export async function mountEditor(el, { noteId }, ctx) {
   let leaving = false;
   let reloadTimer = 0;
   let reloadSeq = 0;
+  let corrections = new Map();          // pageId → strokes of reviewers (Abgabe/Korrektur), read only
+  let showCorrections = true;
 
   // ───── surface → model ─────
   surface.addEventListener('strokes', (e) => {
@@ -254,11 +346,27 @@ export async function mountEditor(el, { noteId }, ctx) {
   }
 
   function refreshPageInfo() {
-    if (quizSide && !surface.hasVocab()) stopQuiz();
-    else toolbar.setQuiz(surface.hasVocab(), !!quizSide);
+    if (quizSide && !surface.hasQuiz()) stopQuiz();
+    else toolbar.setQuiz(surface.hasQuiz(), !!quizSide);
     const id = surface.currentPageId();
     const i = pages.findIndex((p) => p.id === id);
-    toolbar.setPageInfo(i < 0 ? 0 : i + 1, pages.length, i < 0 ? null : { paper: pages[i].paper, orient: pages[i].orient, size: pages[i].size || 'a4' });
+    const p = i < 0 ? null : pages[i];
+    const meta = p ? model.pageMeta(p) : {};
+    toolbar.setPageInfo(i < 0 ? 0 : i + 1, pages.length, !p ? null : {
+      paper: p.paper, orient: p.orient, size: p.size || 'a4',
+      label: meta.label || '', hasBookmarks: pages.some((x) => model.pageMeta(x).label),
+      hasCovers: Array.isArray(meta.covers) && meta.covers.length > 0, canPaste: !!readClip(),
+      hasCorrections: corrections.has(p.id), showCorrections,
+    });
+  }
+
+  /** Korrekturen anderer (Abgabe) laden; offline oder Fehler → keine. */
+  async function loadCorrections() {
+    try {
+      const r = await api.get('correction_get', { note: noteId });
+      corrections = correctionsByPage(r.corrections);
+    } catch { corrections = new Map(); }
+    if (!closed) scheduleReload();
   }
 
   async function reloadPages(initial = false) {
@@ -289,6 +397,9 @@ export async function mountEditor(el, { noteId }, ctx) {
       size: p.size || 'a4',
       bg: p.bg || null,
       strokes: merged.has(p.id) ? merged.get(p.id) : (typeof p.strokes === 'string' ? p.strokes : '[]'),
+      over: showCorrections ? corrections.get(p.id) || '' : '',
+      covers: model.pageMeta(p).covers || [],
+      learn: model.pageMeta(p).learn || null,
     }));
     // keepView: the surface keeps unsaved local changes itself.
     surface.setPages(view, { keepView: !initial });
@@ -352,6 +463,11 @@ export async function mountEditor(el, { noteId }, ctx) {
 
   async function pageMenu(action, value) {
     if (action === 'pdf') return exportPdf();
+    if (action === 'present') return present();
+    if (action === 'paste') return pasteClip();
+    if (action === 'cover') return insertCover();
+    if (action === 'bookmarks') return showBookmarks();
+    if (action === 'corrections') { showCorrections = !showCorrections; return reloadPages(); }
     if (action === 'overview') return openOverview();
     if (action === 'import') return importFiles();
     const cur = currentPage();
@@ -372,11 +488,41 @@ export async function mountEditor(el, { noteId }, ctx) {
         const size = action === 'size' ? value : (cur.size || 'a4');
         if (paper === cur.paper && orient === cur.orient && size === (cur.size || 'a4')) return;
         await settle();
-        await model.setPaper(cur.id, paper, orient, size);
+        // Format ändern: Inhalt mitskalieren? (nur wenn die Seite beschrieben ist)
+        let scale = false;
+        const fresh = await model.getPage(cur.id);
+        if (action === 'size' && fresh && typeof fresh.strokes === 'string' && fresh.strokes !== '[]') {
+          const r = await dialog({
+            title: 'Format ändern',
+            body: h('p', { text: 'Soll der Inhalt an das neue Format angepasst werden?' }),
+            actions: [{ label: 'Abbrechen', value: null }, { label: 'Unverändert', value: 'keep' }, { label: 'Mitskalieren', value: 'scale', primary: true }],
+          });
+          if (!r) return;
+          scale = r === 'scale';
+        }
+        await model.setPaper(cur.id, paper, orient, size, { scale });
         await reloadPages();
         return;
       }
       if (action === 'delete') return deletePage(cur);
+      if (action === 'bookmark') {
+        const label = await promptText({ title: 'Lesezeichen', label: 'Name (leer = entfernen)', value: model.pageMeta(cur).label || '',
+          okLabel: 'Speichern', maxLength: 80, allowEmpty: true });
+        if (label === null || label === undefined) return;
+        await model.setPageMeta(cur.id, { label: label.trim() || null });
+        return;
+      }
+      if (action === 'uncover') {
+        if (!(await confirmDialog({ title: 'Abdeckungen entfernen?', message: 'Alle Abdeckungen dieser Seite werden entfernt. Die Schrift bleibt.', okLabel: 'Entfernen' }))) return;
+        await model.setPageMeta(cur.id, { covers: null });
+        return;
+      }
+      if (action === 'clearCorrections') {
+        if (!(await confirmDialog({ title: 'Korrekturen entfernen?', message: 'Die Korrekturen auf dieser Seite werden für alle gelöscht.', okLabel: 'Entfernen', danger: true }))) return;
+        await api.post('correction_clear', { note: noteId, page: cur.id });
+        corrections.delete(cur.id);
+        return reloadPages();
+      }
     } catch (e) {
       console.error(e);
       toast('Aktion fehlgeschlagen', { type: 'error' });
@@ -437,6 +583,51 @@ export async function mountEditor(el, { noteId }, ctx) {
     refreshPageInfo();
   }
 
+  /** Präsentationsmodus: eine Seite auf einmal, Laserpointer (js/ui/present.js). */
+  async function present() {
+    try {
+      await settle();
+      const [{ openPresentation }, list] = await Promise.all([import('./present.js'), model.listPages(noteId)]);
+      const id = surface.currentPageId();
+      const rows = list.map((p) => ({ ...p, strokes: typeof p.strokes === 'string' ? p.strokes : '[]' }));
+      await openPresentation({ title: note.title, pages: rows, getImage: (a) => model.getImage(a, { noteId }), startIndex: Math.max(0, rows.findIndex((p) => p.id === id)) });
+    } catch (e) {
+      console.error(e);
+      toast('Präsentation nicht möglich', { type: 'error' });
+    }
+  }
+
+  /** Titelblatt aus einer Vorlage als neue erste Seite (Bild als Hintergrund, darauf schreibbar). */
+  async function insertCover() {
+    try {
+      await settle();
+      const [exp, cov] = await Promise.all([import('./export-dialog.js'), import('../export/cover.js')]);
+      const list = await model.listPages(noteId);
+      const first = list[0] || null;
+      const size = first && first.size ? first.size : 'a4';
+      const orient = first && first.orient === 'l' ? 'l' : 'p';
+      const n = await model.getNote(noteId);
+      const r = await exp.openCoverDialog({ title: n.title, size, orient });
+      if (!r) return;
+      const cover = cov.buildCover(r.template, r.fields, { size, orient });
+      const img = await cov.renderCoverImage(cover, { dpi: size === 'a3' ? 150 : 200 });
+      const page = await model.addCoverPage(noteId, { blob: img.blob, w: img.w, h: img.h, size, orient });
+      await reloadPages();
+      surface.scrollToPage(page.id);
+    } catch (e) {
+      console.error(e);
+      toast('Titelblatt konnte nicht eingefügt werden', { type: 'error' });
+    }
+  }
+
+  /** Sprungliste der Lesezeichen (meta.label). */
+  async function showBookmarks() {
+    const marks = await model.listBookmarks(noteId);
+    if (!marks.length) { toast('Noch keine Lesezeichen'); return; }
+    const anchor = toolbar.el.querySelector('[aria-label="Seitenmenü"]') || toolbar.el;
+    menu(anchor, marks.map((m) => ({ label: `${m.label} · S. ${m.index + 1}`, icon: '🔖', onSelect: () => surface.scrollToPage(m.page.id) })));
+  }
+
   async function exportPdf() {
     let pdf, save, exp;
     try {
@@ -467,7 +658,16 @@ export async function mountEditor(el, { noteId }, ctx) {
           return null;
         }
       };
-      const blob = await pdf.notePdf(n, list, { getAssetBytes, cover: opts.cover, pdfa: opts.pdfa });
+      // Lesezeichen aus meta.label, sichtbare Korrekturen anderer obenauf
+      const rows = list.map((p) => ({ ...p, label: model.pageMeta(p).label || '', over: showCorrections ? corrections.get(p.id) || '' : '' }));
+      let numberImage = null;
+      if (opts.pageNumbers) {
+        const cov = await import('../export/cover.js');
+        numberImage = (text) => cov.pageNumberImage(text);
+      }
+      const blob = await pdf.notePdf(n, rows, {
+        getAssetBytes, cover: opts.cover, pdfa: opts.pdfa, outline: opts.outline !== false, numberImage,
+      });
       await save.saveFile(blob, fileName(n.title));
     } catch (e) {
       console.error(e);
@@ -478,12 +678,14 @@ export async function mountEditor(el, { noteId }, ctx) {
   // ───── start ─────
   try {
     await reloadPages(true);
+    loadCorrections();
   } catch (e) {
     console.error(e);
     model.off('change', onModelChange);
     document.removeEventListener('keydown', onSelKey);
     ruler.destroy();
     geo.destroy();
+    compass.destroy();
     toolbar.destroy();
     surface.destroy();
     el.replaceChildren(h('div', { style: { padding: '24px' } },
@@ -501,6 +703,7 @@ export async function mountEditor(el, { noteId }, ctx) {
     document.removeEventListener('keydown', onSelKey);
     ruler.destroy();
     geo.destroy();
+    compass.destroy();
     toolbar.destroy();
     surface.destroy();
     el.replaceChildren();

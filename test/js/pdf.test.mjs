@@ -462,3 +462,55 @@ test('PDF/A mit Titelblatt ist mit qpdf gültig', { skip: !HAS_QPDF && 'qpdf nic
     assert.equal(r.status, 0, r.stdout + r.stderr);
   });
 });
+
+// ───── Lesezeichen, Seitenzahlen, Korrekturen ─────
+
+test('buildPdf: Lesezeichen aus page.label zeigen auf die richtigen Seiten (Titelblatt verschiebt)', () => {
+  const pages = [{ paper: 'blank', orient: 'p', strokes: '[]', label: 'Kapitel 1' }, { paper: 'blank', orient: 'p', strokes: '[]' },
+    { paper: 'blank', orient: 'p', strokes: '[]', label: 'Übung Ä' }];
+  const bytes = buildPdf(pages, { cover: COVER, pdfa: true });
+  checkXref(bytes);
+  const s = latin1(bytes);
+  assert.match(s, /\/Outlines (\d+) 0 R \/PageMode \/UseOutlines/);
+  assert.match(s, /\/Type \/Outlines \/First \d+ 0 R \/Last \d+ 0 R \/Count 2/);
+  const dests = [...s.matchAll(/\/Dest \[(\d+) 0 R \/Fit\]/g)].map((m) => Number(m[1]));
+  assert.deepEqual(dests, [7, 11], 'Seite 1 und 3 nach dem Titelblatt (Objekte 5, 7, 9, 11)');
+  assert.ok(!latin1(buildPdf(pages, { outline: false })).includes('/Outlines'));
+  assert.ok(!latin1(buildPdf([{ paper: 'blank', strokes: '[]' }])).includes('/Outlines'));
+  withTempPdfIfQpdf(bytes);
+});
+
+function withTempPdfIfQpdf(bytes) {
+  if (!HAS_QPDF) return;
+  withTempPdf(bytes, (file) => {
+    const r = spawnSync('qpdf', ['--check', file], { encoding: 'utf8' });
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+  });
+}
+
+test('buildPdf: Seitenzahlen als 1-Bit-Schablone unten mittig, nicht auf dem Titelblatt', () => {
+  const seen = [];
+  const numberImage = (t) => { seen.push(t); const g = new Uint8Array(12 * 4).fill(255); g[0] = 0; g[13] = 10; return { w: 60, h: 32, img: { w: 12, h: 4, gray: g } }; };
+  const bytes = buildPdf(PAGES, { cover: COVER, numberImage });
+  const offsets = checkXref(bytes);
+  assert.deepEqual(seen, ['1', '2']);
+  const s = latin1(bytes);
+  const masks = [...s.matchAll(/(\d+) 0 obj\n<< \/Type \/XObject \/Subtype \/Image \/Width 12 \/Height 4 \/ImageMask true \/BitsPerComponent 1 /g)].map((m) => Number(m[1]));
+  assert.equal(masks.length, 2);
+  const { data } = streamOf(bytes, offsets, masks[0]);
+  assert.equal(data.length, 2 * 4, 'zwei Bytes je Zeile');
+  assert.equal(data.charCodeAt(0) & 0x80, 0, 'dunkles Pixel = 0 (malen)');
+  assert.equal(data.charCodeAt(2) & 0x40, 0, 'zweite Zeile, Pixel 1');
+  assert.match(streamOf(bytes, offsets, 8).data, /\/N0 Do Q/);
+  assert.ok(!streamOf(bytes, offsets, 6).data.includes('/N0'), 'Titelblatt ohne Seitenzahl');
+  withTempPdfIfQpdf(buildPdf(PAGES, { numberImage, pdfa: true }));
+});
+
+test('buildPdf: Korrektur-Striche (page.over) werden über der Schrift gezeichnet', () => {
+  const over = encodeStrokes([stroke('corr0001', 'p', '#d0342c', 1, [900, 900, 200, 1200, 1200, 200])]);
+  const a = latin1(buildPdf([{ paper: 'blank', strokes: encodeStrokes([penA]) }]));
+  const b = latin1(buildPdf([{ paper: 'blank', strokes: encodeStrokes([penA]), over }]));
+  assert.ok(!a.includes('0.816 0.204 0.173 rg'));
+  assert.ok(b.includes('0.816 0.204 0.173 rg'), 'rote Korrektur');
+  assert.ok(b.indexOf('0.816 0.204 0.173 rg') > b.indexOf(' f\n'), 'nach der eigenen Schrift');
+});

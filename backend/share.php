@@ -50,12 +50,12 @@ function share_own_item($uid, $kind, $id, $live)
 /** Shares of one item of the owner: {shares:[{id, target_id, display_name}]}. */
 function share_list($ownerId, $kind, $itemId)
 {
-    $rows = all('SELECT s.id, s.target_id, u.display_name FROM {shares} s JOIN {users} u ON u.id = s.target_id
+    $rows = all('SELECT s.id, s.target_id, s.review, u.display_name FROM {shares} s JOIN {users} u ON u.id = s.target_id
                  WHERE s.owner_id = ? AND s.kind = ? AND s.item_id = ? ORDER BY u.display_name, s.id',
         [(int)$ownerId, $kind, $itemId]);
     $out = [];
     foreach ($rows as $r) {
-        $out[] = ['id' => (int)$r['id'], 'target_id' => (int)$r['target_id'], 'display_name' => $r['display_name']];
+        $out[] = ['id' => (int)$r['id'], 'target_id' => (int)$r['target_id'], 'display_name' => $r['display_name'], 'review' => (int)$r['review']];
     }
     return ['shares' => $out];
 }
@@ -151,8 +151,10 @@ function route_share($u)
     $ids = [];
     foreach ($targets as $t) $ids[share_int_id($t, 'Empfänger')] = true;
     $ids = array_keys($ids);
+    // review: Empfänger dürfen korrigieren (Abgabe). Bei bestehenden Freigaben wird der Wert übernommen.
+    $review = field('review', false) ? 1 : 0;
 
-    return tx(function () use ($uid, $kind, $id, $ids) {
+    return tx(function () use ($uid, $kind, $id, $ids, $review) {
         share_own_item($uid, $kind, $id, true);
         if ($ids) {
             if (in_array($uid, $ids, true)) fail(400, 'invalid_target', 'Du kannst nicht an dich selbst freigeben.');
@@ -163,8 +165,9 @@ function route_share($u)
             }
             $now = now_ms();
             foreach ($ids as $t) {
-                q('INSERT IGNORE INTO {shares} (owner_id, target_id, kind, item_id, created_at) VALUES (?, ?, ?, ?, ?)',
-                    [$uid, $t, $kind, $id, $now]);
+                q('INSERT INTO {shares} (owner_id, target_id, kind, item_id, review, created_at) VALUES (?, ?, ?, ?, ?, ?)
+                   ON DUPLICATE KEY UPDATE review = VALUES(review)',
+                    [$uid, $t, $kind, $id, $review, $now]);
             }
         }
         return share_list($uid, $kind, $id);
@@ -211,6 +214,7 @@ function route_shared_pages($u)
     if ($note === null) fail(404, 'not_found', 'Notiz nicht gefunden.');
     $out = note_with_pages($note);
     $out['note']['folder_id'] = null; // the owner's folder structure is none of the recipient's business
+    $out['can_review'] = can_read_note($uid, $noteId, true) !== null;
     return $out;
 }
 

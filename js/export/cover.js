@@ -298,19 +298,35 @@ export function buildCover(templateId, fields, { size = 'a4', orient = 'p' } = {
   return { size: sz, orient: o, boxes: L.boxes, lines: L.lines, texts: L.texts };
 }
 
-/** Zeichnet ein Cover verkleinert auf ein Canvas (Seite zentriert, weißer Grund). Für die Vorschau im Dialog. */
-export function drawCoverPreview(canvas, cover) {
-  const ctx = canvas && canvas.getContext ? canvas.getContext('2d') : null;
-  if (!ctx || !cover) return;
-  const base = SIZES[cover.size] || SIZES.a4;
-  const W = cover.orient === 'l' ? base.h : base.w;
-  const H = cover.orient === 'l' ? base.w : base.h;
-  const cw = canvas.width, ch = canvas.height;
-  if (!cw || !ch) return;
-  const s = Math.min(cw / W, ch / H);
-  const ox = (cw - W * s) / 2, oy = (ch - H * s) / 2;
-  ctx.fillStyle = '#ffffff';
-  ctx.fillRect(0, 0, cw, ch);
+// ───────────── Zeichnen (Vorschau und Bild) ─────────────
+
+/** Seitenmaße in 0,1 mm. Unbekannte Größe → A4, Ausrichtung 'l' sonst Hochformat. */
+function pageUnits(size, orient) {
+  const sz = Object.prototype.hasOwnProperty.call(SIZES, size) ? size : 'a4';
+  const b = SIZES[sz];
+  return orient === 'l' ? { W: b.h, H: b.w } : { W: b.w, H: b.h };
+}
+
+/** Graustufen-Textbild → Canvas mit RGB-Pixeln. */
+function grayCanvas(im) {
+  const tmp = makeCanvas(im.w, im.h);
+  const tc = tmp.getContext('2d');
+  const id = tc.createImageData(im.w, im.h);
+  const d = id.data;
+  for (let i = 0, j = 0; i < im.gray.length; i++, j += 4) {
+    d[j] = d[j + 1] = d[j + 2] = im.gray[i];
+    d[j + 3] = 255;
+  }
+  tc.putImageData(id, 0, 0);
+  return tmp;
+}
+
+/**
+ * Zeichnet Boxen, Linien und Texte (ohne Grund) mit `scale` Pixel je 0,1 mm, verschoben um (ox, oy).
+ * Gemeinsamer Zeichencode für Vorschau (drawCoverPreview) und Bildexport (renderCoverImage).
+ */
+function paintCover(ctx, cover, scale, ox = 0, oy = 0) {
+  const s = scale;
   for (const b of cover.boxes || []) {
     ctx.fillStyle = b.color;
     ctx.fillRect(ox + b.x * s, oy + b.y * s, b.w * s, b.h * s);
@@ -326,18 +342,80 @@ export function drawCoverPreview(canvas, cover) {
   for (const t of cover.texts || []) {
     const im = t.img;
     if (!im || !im.gray || im.gray.length !== im.w * im.h) continue;
-    const tmp = makeCanvas(im.w, im.h);
-    const tc = tmp.getContext('2d');
-    const id = tc.createImageData(im.w, im.h);
-    const d = id.data;
-    for (let i = 0, j = 0; i < im.gray.length; i++, j += 4) {
-      d[j] = d[j + 1] = d[j + 2] = im.gray[i];
-      d[j + 3] = 255;
-    }
-    tc.putImageData(id, 0, 0);
     ctx.imageSmoothingEnabled = true;
-    ctx.drawImage(tmp, ox + t.x * s, oy + t.y * s, t.w * s, t.h * s);
+    ctx.drawImage(grayCanvas(im), ox + t.x * s, oy + t.y * s, t.w * s, t.h * s);
   }
+}
+
+/** Zeichnet ein Cover verkleinert auf ein Canvas (Seite zentriert, weißer Grund). Für die Vorschau im Dialog. */
+export function drawCoverPreview(canvas, cover) {
+  const ctx = canvas && canvas.getContext ? canvas.getContext('2d') : null;
+  if (!ctx || !cover) return;
+  const { W, H } = pageUnits(cover.size, cover.orient);
+  const cw = canvas.width, ch = canvas.height;
+  if (!cw || !ch) return;
+  const s = Math.min(cw / W, ch / H);
+  const ox = (cw - W * s) / 2, oy = (ch - H * s) / 2;
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, cw, ch);
+  paintCover(ctx, cover, s, ox, oy);
+}
+
+/**
+ * Pixelmaß des Titelblatts als Bild: 1 mm = dpi/25,4 px, gerundet.
+ * coverPixelSize('a4', 'p', 200) → {w: 1654, h: 2339}; quer vertauscht. Ungültiges dpi → 200.
+ */
+export function coverPixelSize(size, orient, dpi = 200) {
+  const d = Number.isFinite(dpi) && dpi > 0 ? dpi : 200;
+  const { W, H } = pageUnits(size, orient);
+  const px = (units) => Math.round((units / 10) * d / 25.4);
+  return { w: px(W), h: px(H) };
+}
+
+function toJpeg(canvas, quality) {
+  if (typeof canvas.convertToBlob === 'function') return canvas.convertToBlob({ type: 'image/jpeg', quality });
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('JPEG-Erzeugung fehlgeschlagen'))), 'image/jpeg', quality);
+  });
+}
+
+/**
+ * Titelblatt als JPEG (weißer Grund, Pixelmaß wie coverPixelSize) → Promise<{blob, w, h}>.
+ * Standard: 200 dpi, Qualität 0,9. Die Seite mit dem Bild als Hintergrund legt der Aufrufer an.
+ */
+export async function renderCoverImage(cover, { dpi = 200, quality = 0.9 } = {}) {
+  if (!cover || typeof cover !== 'object') throw new Error('Kein Titelblatt');
+  const { W } = pageUnits(cover.size, cover.orient);
+  const { w, h } = coverPixelSize(cover.size, cover.orient, dpi);
+  const canvas = makeCanvas(w, h);
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, w, h);
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  paintCover(ctx, cover, w / W);
+  const q = quality > 0 && quality <= 1 ? quality : 0.9;
+  const blob = await toJpeg(canvas, q);
+  return { blob, w, h };
+}
+
+const PAGE_NUMBER_MM = 3.2;     // Schriftgröße der Seitenzahl
+const PAGE_NUMBER_MAX_W = 1000; // 100 mm Textbreite (weit mehr als jede Seitenzahl)
+
+/**
+ * Seitenzahl als Graustufen-Bild für den PDF-Writer (unten mittig): renderText wie canvasText, grau #555, zentriert.
+ * → {w, h, img} (w/h in 0,1 mm) oder null bei leerem Text oder fehlgeschlagenem Rendern.
+ */
+export function pageNumberImage(text, { sizeMm = PAGE_NUMBER_MM } = {}, renderText = canvasText) {
+  const t = cleanText(text);
+  if (!t) return null;
+  const r = renderText(t, {
+    sizeMm: sizeMm > 0 ? sizeMm : PAGE_NUMBER_MM, color: GREY, align: 'center', maxWidth: PAGE_NUMBER_MAX_W,
+  });
+  if (!r || !r.img || !(r.w > 0) || !(r.h > 0)) return null;
+  const { w: iw, h: ih, gray } = r.img;
+  if (!(iw > 0) || !(ih > 0) || !gray || gray.length !== iw * ih) return null;
+  return { w: Math.round(r.w), h: Math.round(r.h), img: r.img };
 }
 
 /** Heutiges Datum als „25.11.2026“. */

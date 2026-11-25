@@ -99,7 +99,7 @@ export async function exportAllWithInfo(model) {
         if (assetResult.get(p.bg)) bg = p.bg;
       }
       pages.push({
-        id: p.id, note_id: p.note_id, pos: p.pos, paper: p.paper, orient: p.orient, size: p.size || 'a4',
+        id: p.id, note_id: p.note_id, pos: p.pos, paper: p.paper, orient: p.orient, size: p.size || 'a4', meta: typeof p.meta === 'string' ? p.meta : null,
         strokes: p.strokes, bg, created_at: p.created_at, updated_at: p.updated_at,
       });
     }
@@ -110,7 +110,7 @@ export async function exportAllWithInfo(model) {
     version: VERSION,
     exported_at: new Date().toISOString(),
     folders: folders.map((f) => ({
-      id: f.id, parent_id: f.parent_id || null, name: f.name, created_at: f.created_at, updated_at: f.updated_at,
+      id: f.id, parent_id: f.parent_id || null, name: f.name, color: f.color || null, created_at: f.created_at, updated_at: f.updated_at,
     })),
     notes: notes.map((n) => ({
       id: n.id, folder_id: n.folder_id || null, title: n.title, created_at: n.created_at, updated_at: n.updated_at,
@@ -212,6 +212,7 @@ export async function importBackup(model, file) {
       const [f, parent] = queue[i];
       if (newId.has(f.id)) continue;
       const nf = await model.createFolder({ name: typeof f.name === 'string' ? f.name : '', parentId: parent });
+      if (typeof f.color === 'string') await model.setFolderColor(nf.id, f.color);
       newId.set(f.id, nf.id);
       counts.folders++;
       for (const c of children.get(f.id) || []) queue.push([c, nf.id]);
@@ -252,6 +253,9 @@ export async function importBackup(model, file) {
         last = page;
       }
       await model.saveStrokes(page.id, sp.strokes);
+      if (typeof sp.meta === 'string' && sp.meta) {
+        try { await model.setPageMeta(page.id, JSON.parse(sp.meta)); } catch { /* kaputte Metadaten: weglassen */ }
+      }
       // Hintergrundbild erst nach den Strichen setzen (setPageBackground braucht die Seite mit Strichen)
       if (typeof sp.bg === 'string' && assetIds.has(sp.bg)) await model.setPageBackground(page.id, assetIds.get(sp.bg));
       counts.pages++;

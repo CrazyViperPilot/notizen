@@ -142,6 +142,10 @@ export async function mountSharedNote(el, { noteId }, ctx) {
   let note = null;
   let pages = [];
   let busy = false;
+  // Abgabe/Korrektur: wer mit „Korrigieren“ freigegeben bekam, schreibt in eine eigene Ebene (correction_save).
+  let canReview = false;
+  let reviewing = false;
+  let corr = new Map();                 // pageId → eigene Korrektur-Striche (String)
 
   const title = h('h1', { className: 'shared-title', text: 'Notiz' });
   const counter = h('span', { className: 'shared-count muted', text: '' });
@@ -151,28 +155,94 @@ export async function mountSharedNote(el, { noteId }, ctx) {
   const msg = h('div', { className: 'shared-message' });
   msg.hidden = true;
   const canvas = h('div', { className: 'shared-canvas' });
+  const badge = h('span', { className: 'shared-badge', text: 'Nur lesen' });
+  const reviewBtn = h('button', { className: 'btn', type: 'button', text: 'Korrigieren', hidden: true, 'aria-pressed': 'false', onclick: () => setReview(!reviewing) });
+  // Korrektur-Werkzeuge: Rotstift, Grün, Textmarker, Radierer (nur die eigene Korrektur-Ebene)
+  const TOOLS = [
+    ['Rotstift', { kind: 'pen', color: '#d0342c', width: 1 }],
+    ['Grün', { kind: 'pen', color: '#1e8449', width: 1 }],
+    ['Markieren', { kind: 'highlighter', color: 0, width: 0 }],
+    ['Radierer', { kind: 'eraser', mode: 'stroke' }],
+  ];
+  const toolBtns = TOOLS.map(([label, tool], i) => h('button', {
+    className: 'btn' + (i === 0 ? ' on' : ''), type: 'button', text: label, 'aria-pressed': i === 0 ? 'true' : 'false',
+    onclick: () => pickTool(i),
+  }));
+  const reviewBar = h('div', { className: 'shared-review-bar', role: 'toolbar', 'aria-label': 'Korrigieren', hidden: true },
+    ...toolBtns,
+    h('button', { className: 'btn', type: 'button', text: '↶', title: 'Rückgängig', 'aria-label': 'Rückgängig', onclick: () => surface.undo() }));
 
   el.replaceChildren(
     h('header', { className: 'shared-head' },
       h('button', { className: 'btn ghost', type: 'button', text: '‹ Zurück', onclick: () => ctx.navigate('#/shared') }),
       title,
-      h('span', { className: 'shared-badge', text: 'Nur lesen' }),
+      badge,
       counter,
+      reviewBtn,
       pdfBtn),
+    reviewBar,
     hint,
     msg,
     canvas);
 
   // Hintergrundbilder (ARCHITEKTUR 10.1): lokal bzw. per asset_get mit note (Lesezugriff auf die geteilte Notiz)
-  const surface = createSurface(canvas, { readOnly: true, getImage: (id) => ctx.model.getImage(id, { noteId, store: false }) });
+  let fingerDraw = false;   // wie im Editor (Konto-Einstellung „Mit Finger/Maus zeichnen“), wirkt nur beim Korrigieren
+  try { const p = JSON.parse(localStorage.getItem('notizen:prefs')); fingerDraw = !!(p && p.fingerDraw); } catch { /* keine */ }
+  const surface = createSurface(canvas, { readOnly: true, fingerDraw, getImage: (id) => ctx.model.getImage(id, { noteId, store: false }) });
   surface.addEventListener('pagechange', onPage);
+  surface.addEventListener('strokes', onStrokes);
 
   load();
   return () => {
     alive = false;
     surface.removeEventListener('pagechange', onPage);
+    surface.removeEventListener('strokes', onStrokes);
+    surface.flush();
     surface.destroy();
   };
+
+  function pickTool(i) {
+    toolBtns.forEach((b, k) => { b.classList.toggle('on', k === i); b.setAttribute('aria-pressed', k === i ? 'true' : 'false'); });
+    surface.setTool(TOOLS[i][1]);
+  }
+
+  /** Korrektur einer Seite speichern (nur online). */
+  function onStrokes(e) {
+    if (!reviewing) return;
+    const { pageId, strokes } = e.detail;
+    corr.set(pageId, strokes);
+    api.post('correction_save', { note: noteId, page: pageId, strokes })
+      .catch((err) => toast(err instanceof ApiError && err.status === 0 ? 'Offline – Korrektur nicht gespeichert.' : errorText(err), { type: 'error' }));
+  }
+
+  async function loadCorrections() {
+    try {
+      const r = await api.get('correction_get', { note: noteId });
+      canReview = !!r.can_review;
+      corr = new Map((r.corrections || []).map((c) => [c.page_id, c.strokes]));
+    } catch { /* offline: ohne Korrekturen */ }
+  }
+
+  /** Seiten für die Fläche: lesen = Seite + eigene Korrektur obenauf; korrigieren = Korrektur editierbar, Seite darunter. */
+  function viewPages() {
+    return pages.map((p) => (reviewing
+      ? { ...p, strokes: corr.get(p.id) || '[]', under: p.strokes }
+      : { ...p, over: corr.get(p.id) || '' }));
+  }
+
+  function setReview(on) {
+    if (on && !canReview) return;
+    surface.flush();
+    reviewing = !!on;
+    reviewBtn.setAttribute('aria-pressed', reviewing ? 'true' : 'false');
+    reviewBtn.classList.toggle('on', reviewing);
+    reviewBtn.textContent = reviewing ? 'Fertig' : 'Korrigieren';
+    badge.textContent = reviewing ? 'Korrigieren' : 'Nur lesen';
+    reviewBar.hidden = !reviewing;
+    surface.setReadOnly(!reviewing);
+    if (reviewing) pickTool(0);
+    surface.setPages(viewPages(), { keepView: true });
+  }
 
   function onPage(e) {
     showCount(e.detail && e.detail.pageId);
@@ -211,8 +281,16 @@ export async function mountSharedNote(el, { noteId }, ctx) {
     title.textContent = note.title || 'Ohne Titel';
     msg.hidden = true;
     canvas.hidden = false;
-    surface.setPages(pages);
+    canReview = !!data.can_review;
+    reviewBtn.hidden = !canReview;
+    surface.setPages(viewPages());
     pdfBtn.disabled = false;
+    loadCorrections().then(() => {
+      if (!alive) return;
+      reviewBtn.hidden = !canReview;
+      if (!canReview && reviewing) setReview(false);
+      else surface.setPages(viewPages(), { keepView: true });
+    });
     showCount(pages.length ? pages[0].id : null);
     hint.textContent = hintText || '';
     hint.hidden = !hintText;
@@ -260,7 +338,16 @@ export async function mountSharedNote(el, { noteId }, ctx) {
         };
         const opts = await exp.askPdfOptions(note.title, pages[0] || null);   // Titelblatt, PDF/A
         if (!opts) return;
-        const blob = await pdf.notePdf(note, pages, { getAssetBytes, cover: opts.cover, pdfa: opts.pdfa });
+        surface.flush();
+        const rows = pages.map((p) => ({ ...p, over: corr.get(p.id) || '' }));
+        let numberImage = null;
+        if (opts.pageNumbers) {
+          const cov = await import('../export/cover.js');
+          numberImage = (text) => cov.pageNumberImage(text);
+        }
+        const blob = await pdf.notePdf(note, rows, {
+          getAssetBytes, cover: opts.cover, pdfa: opts.pdfa, outline: opts.outline !== false, numberImage,
+        });
         await save.saveFile(blob, fileName(note.title) + '.pdf');
       } catch (e) {
         if (e && e.name === 'AbortError') return;   // Teilen-Menü abgebrochen

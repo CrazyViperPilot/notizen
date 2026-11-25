@@ -158,6 +158,8 @@ function describePage(p, img = null) {
   let strokes = [];
   if (p && typeof p.strokes === 'string') strokes = decodeStrokes(p.strokes);
   else if (p && Array.isArray(p.strokes)) strokes = p.strokes;
+  // Korrekturen anderer (p.over, Strich-String) liegen über der eigenen Schrift
+  if (p && typeof p.over === 'string' && p.over) strokes = [...strokes, ...decodeStrokes(p.over)];
   const { w, h } = pageDims(size, orient);
   return { w: w * K, h: h * K, content: contentOf(paper, orient, size, strokes, img) };
 }
@@ -425,11 +427,14 @@ function cleanTitle(title) {
  * Objekte: 1 Catalog, 2 Pages, 3 Info, 4 Resources (ExtGStates), dann je Seite Page (5+2i) und Content (6+2i),
  * danach die Bild-XObjects (ab 5+2n), im PDF/A zuletzt Metadaten (XMP) und das ICC-Profil.
  */
-function writePdf(items, title, xobjs = [], { pdfa = false, date = new Date() } = {}) {
+function writePdf(items, title, xobjs = [], { pdfa = false, date = new Date(), outline = [] } = {}) {
   const objs = [];
   const n = items.length;
   const firstX = 5 + 2 * n;      // Objektnummer des ersten Bild-XObjects
-  const metaNo = firstX + xobjs.length, iccNo = metaNo + 1;
+  // Lesezeichen: [{title, page}] (page = Index in items) → Outlines-Wurzel + je Eintrag ein Objekt
+  const marks = (Array.isArray(outline) ? outline : []).filter((o) => o && Number.isInteger(o.page) && o.page >= 0 && o.page < n && o.title);
+  const outNo = firstX + xobjs.length;                       // Wurzel (nur wenn marks)
+  const metaNo = outNo + (marks.length ? 1 + marks.length : 0), iccNo = metaNo + 1;
   const kids = items.map((_, i) => `${5 + 2 * i} 0 R`).join(' ');
   const t = cleanTitle(title);
   const [pdfDate, xmpDate] = pdfDates(date instanceof Date && !Number.isNaN(date.getTime()) ? date : new Date());
@@ -437,7 +442,8 @@ function writePdf(items, title, xobjs = [], { pdfa = false, date = new Date() } 
     ? ` /Metadata ${metaNo} 0 R /OutputIntents [<< /Type /OutputIntent /S /GTS_PDFA1 /OutputConditionIdentifier (sRGB IEC61966-2.1)`
       + ` /RegistryName (http://www.color.org) /Info (sRGB IEC61966-2.1) /DestOutputProfile ${iccNo} 0 R >>]`
     : '';
-  objs.push([`<< /Type /Catalog /Pages 2 0 R${pdfaCat} >>`]);
+  const outCat = marks.length ? ` /Outlines ${outNo} 0 R /PageMode /UseOutlines` : '';
+  objs.push([`<< /Type /Catalog /Pages 2 0 R${outCat}${pdfaCat} >>`]);
   objs.push([`<< /Type /Pages /Kids [${kids}] /Count ${n} >>`]);
   objs.push([`<< /Title ${hexString(t)} /Producer (Notizen)${pdfa ? ` /Creator (Notizen) /CreationDate (${pdfDate}) /ModDate (${pdfDate})` : ''} >>`]);
   objs.push([`<< /ExtGState ${EXT_GS} >>`]);
@@ -451,6 +457,15 @@ function writePdf(items, title, xobjs = [], { pdfa = false, date = new Date() } 
     objs.push([`<< /Length ${it.data.length}${filter} >>\nstream\n`, it.data, '\nendstream']);
   });
   for (const x of xobjs) objs.push([`<< ${x.head} /Length ${x.data.length} >>\nstream\n`, x.data, '\nendstream']);
+  if (marks.length) {
+    objs.push([`<< /Type /Outlines /First ${outNo + 1} 0 R /Last ${outNo + marks.length} 0 R /Count ${marks.length} >>`]);
+    marks.forEach((m, i) => {
+      const no = outNo + 1 + i;
+      const prev = i ? ` /Prev ${no - 1} 0 R` : '';
+      const next = i < marks.length - 1 ? ` /Next ${no + 1} 0 R` : '';
+      objs.push([`<< /Title ${hexString(cleanTitle(m.title))} /Parent ${outNo} 0 R${prev}${next} /Dest [${5 + 2 * m.page} 0 R /Fit] >>`]);
+    });
+  }
   if (pdfa) {
     const meta = utf8(xmpPacket(t, xmpDate));
     objs.push([`<< /Type /Metadata /Subtype /XML /Length ${meta.length} >>\nstream\n`, meta, '\nendstream']);
@@ -479,48 +494,76 @@ function writePdf(items, title, xobjs = [], { pdfa = false, date = new Date() } 
 }
 
 /**
- * Seiten und Titelblatt → {items, xobjs} für writePdf. pack(bytes) → {data, flate} (komprimieren oder nicht).
- * Das Titelblatt bekommt Format und Ausrichtung der ersten Seite, wenn es selbst keine nennt.
+ * Graustufenbild → 1-Bit-Schablone (ImageMask, Zeilen auf Bytes aufgefüllt): 0 = malen (dunkel), 1 = frei.
+ * Schablonen sind in PDF/A erlaubt und decken das Papier darunter nicht ab.
  */
-async function assemble(laid, imgs, cover, pack) {
-  const xobjs = imgs.map(jpegXObject);
-  const items = [];
-  if (cover && typeof cover === 'object') {
-    const first = laid.length ? laid[0].p : null;
-    const c = coverPage(cover, { size: sizeOf(first), orient: first && first.orient === 'l' ? 'l' : 'p' });
-    const xo = [];
-    for (const t of c.texts) {
-      const z = await pack(t.gray);
-      xo.push([`T${xo.length}`, xobjs.length]);
-      xobjs.push(grayXObject(t, z.data, z.flate));
-    }
-    items.push({ w: c.w, h: c.h, ...(await pack(ascii(c.content))), xo });
+function maskBits(gray, w, h) {
+  const row = Math.ceil(w / 8);
+  const out = new Uint8Array(row * h).fill(255);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) if (gray[y * w + x] < 150) out[y * row + (x >> 3)] &= ~(0x80 >> (x & 7));
   }
-  for (const { p, no } of laid) {
-    const d = describePage(p, no == null ? null : imgs[no]);
-    items.push({ w: d.w, h: d.h, ...(await pack(ascii(d.content))), xo: no == null ? [] : [['Im1', no]] });
-  }
-  return { items, xobjs };
+  return out;
 }
 
-/** Wie assemble, aber synchron und unkomprimiert (für buildPdf). */
-function assembleSync(laid, imgs, cover) {
-  const xobjs = imgs.map(jpegXObject);
+/**
+ * Seiten und Titelblatt → {items, xobjs, outline} mit unkomprimierten Daten (raw). Das Titelblatt bekommt Format und
+ * Ausrichtung der ersten Seite, wenn es selbst keine nennt. numberImage(text) → {w, h, img} | null (0,1 mm): Seitenzahl
+ * unten mittig auf jede Seite (nicht aufs Titelblatt). Lesezeichen aus p.label.
+ */
+function parts(laid, imgs, cover, numberImage) {
+  const xobjs = imgs.map((im) => ({ ...jpegXObject(im), raw: null }));
   const items = [];
+  const outline = [];
   if (cover && typeof cover === 'object') {
     const first = laid.length ? laid[0].p : null;
     const c = coverPage(cover, { size: sizeOf(first), orient: first && first.orient === 'l' ? 'l' : 'p' });
     const xo = c.texts.map((t, i) => {
-      xobjs.push(grayXObject(t, t.gray, false));
+      xobjs.push({ head: grayXObject(t, null, false).head, raw: t.gray, flate: true });
       return [`T${i}`, xobjs.length - 1];
     });
-    items.push({ w: c.w, h: c.h, data: ascii(c.content), flate: false, xo });
+    items.push({ w: c.w, h: c.h, raw: ascii(c.content), xo });
   }
-  for (const { p, no } of laid) {
+  laid.forEach(({ p, no }, i) => {
     const d = describePage(p, no == null ? null : imgs[no]);
-    items.push({ w: d.w, h: d.h, data: ascii(d.content), flate: false, xo: no == null ? [] : [['Im1', no]] });
+    let content = d.content;
+    const xo = no == null ? [] : [['Im1', no]];
+    if (typeof numberImage === 'function') {
+      let ni = null;
+      try { ni = numberImage(String(i + 1)); } catch { ni = null; }
+      const im = ni && ni.img;
+      if (im && im.w > 0 && im.h > 0 && im.gray instanceof Uint8Array && im.gray.length === im.w * im.h && ni.w > 0 && ni.h > 0) {
+        xobjs.push({ head: `/Type /XObject /Subtype /Image /Width ${im.w} /Height ${im.h} /ImageMask true /BitsPerComponent 1`, raw: maskBits(im.gray, im.w, im.h), flate: true });
+        xo.push(['N0', xobjs.length - 1]);
+        const w = ni.w * K, h = ni.h * K;
+        content += `\nq 0.333 0.333 0.333 rg ${num(w)} 0 0 ${num(h)} ${num((d.w - w) / 2)} ${num(6 * 72 / 25.4)} cm /N0 Do Q`;
+      }
+    }
+    if (p && typeof p.label === 'string' && p.label.trim()) outline.push({ title: p.label.trim(), page: items.length });
+    items.push({ w: d.w, h: d.h, raw: ascii(content), xo });
+  });
+  return { items, xobjs, outline };
+}
+
+/** Wie parts, aber mit gepackten Daten (pack(bytes) → {data, flate}). JPEGs bleiben unverändert. */
+async function assemble(laid, imgs, cover, pack, numberImage) {
+  const { items, xobjs, outline } = parts(laid, imgs, cover, numberImage);
+  for (const it of items) Object.assign(it, await pack(it.raw));
+  for (const x of xobjs) {
+    if (!x.raw) continue;
+    const z = x.flate ? await pack(x.raw) : { data: x.raw, flate: false };
+    x.data = z.data;
+    if (z.flate) x.head += ' /Filter /FlateDecode';
   }
-  return { items, xobjs };
+  return { items, xobjs, outline };
+}
+
+/** Wie assemble, aber synchron und unkomprimiert (für buildPdf). */
+function assembleSync(laid, imgs, cover, numberImage) {
+  const { items, xobjs, outline } = parts(laid, imgs, cover, numberImage);
+  for (const it of items) { it.data = it.raw; it.flate = false; }
+  for (const x of xobjs) if (x.raw) x.data = x.raw;
+  return { items, xobjs, outline };
 }
 
 /**
@@ -528,12 +571,14 @@ function assembleSync(laid, imgs, cover) {
  * mit strokes als String (wie gespeichert), als Array von Strichen oder null (= leere Seite mit Papier).
  * images: Map oder Objekt assetId → JPEG-Bytes (Uint8Array) für die bg-Ids der Seiten. Fehlt ein Bild, bleibt die Seite ohne Bild.
  * cover: Titelblatt (siehe coverPage) oder null. pdfa: PDF/A-2b. date: Erstellungsdatum (Standard: jetzt).
+ * outline: Lesezeichen aus page.label (Standard an). numberImage(text) → {w, h, img} | null: Seitenzahlen (export/cover.js pageNumberImage).
+ * page.over: Korrektur-Striche (String) über der Schrift.
  * Gibt Uint8Array zurück.
  */
-export function buildPdf(pages, { title = '', images = null, cover = null, pdfa = false, date = new Date() } = {}) {
+export function buildPdf(pages, { title = '', images = null, cover = null, pdfa = false, date = new Date(), outline = true, numberImage = null } = {}) {
   const { imgs, pages: laid } = layout(pages || [], (id) => lookupBytes(images, id), pdfa);
-  const { items, xobjs } = assembleSync(laid, imgs, cover);
-  return writePdf(items, title, xobjs, { pdfa, date });
+  const r = assembleSync(laid, imgs, cover, numberImage);
+  return writePdf(r.items, title, r.xobjs, { pdfa, date, outline: outline ? r.outline : [] });
 }
 
 function canCompress() {
@@ -550,7 +595,7 @@ async function deflate(bytes) {
  * vorhanden ist. opts.getAssetBytes(id) → Promise<Uint8Array|null>: JPEG-Bytes eines Hintergrundbilds (jedes Asset nur einmal).
  * opts.cover: Titelblatt (export/cover.js) oder null, opts.pdfa: PDF/A-2b.
  */
-export async function notePdf(note, pages, { getAssetBytes = null, cover = null, pdfa = false, date = new Date() } = {}) {
+export async function notePdf(note, pages, { getAssetBytes = null, cover = null, pdfa = false, date = new Date(), outline = true, numberImage = null } = {}) {
   const list = Array.isArray(pages) && pages.length ? pages : [null];
   const bytes = new Map();
   if (typeof getAssetBytes === 'function') {
@@ -570,6 +615,6 @@ export async function notePdf(note, pages, { getAssetBytes = null, cover = null,
     }
     return { data: raw, flate: false };
   };
-  const { items, xobjs } = await assemble(laid, imgs, cover, pack);
-  return new Blob([writePdf(items, note ? note.title : '', xobjs, { pdfa, date })], { type: 'application/pdf' });
+  const r = await assemble(laid, imgs, cover, pack, numberImage);
+  return new Blob([writePdf(r.items, note ? note.title : '', r.xobjs, { pdfa, date, outline: outline ? r.outline : [] })], { type: 'application/pdf' });
 }

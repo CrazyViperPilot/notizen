@@ -12,10 +12,11 @@ export function pageDims(size, orient) {
 }
 /** Normalisiertes Format einer Seite. */
 export const sizeOf = (page) => (page && PAGE_SIZES.includes(page.size) ? page.size : 'a4');
-export const PAPERS = ['blank', 'lined', 'grid', 'dotted', 'vocab', 'lin1', 'lin2', 'lin3', 'lin4', 'math'];
+export const PAPERS = ['blank', 'lined', 'grid', 'dotted', 'vocab', 'lin1', 'lin2', 'lin3', 'lin4', 'math', 'coord', 'mm', 'music', 'iso'];
 export const PAPER_NAMES = {
   blank: 'Blanko', lined: 'Liniert', grid: 'Kariert', dotted: 'Gepunktet', vocab: 'Vokabeln',
   lin1: 'Lineatur 1', lin2: 'Lineatur 2', lin3: 'Lineatur 3', lin4: 'Lineatur 4', math: 'Rechenkästchen mit Rand',
+  coord: 'Koordinatensystem', mm: 'Millimeterpapier', music: 'Notenlinien', iso: 'Isometriepapier',
 };
 
 export const PEN_COLORS = ['#1a1a1a', '#1f3a93', '#c0392b', '#1e8449', '#e67e22', '#7d3c98'];

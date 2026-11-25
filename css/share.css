@@ -79,3 +79,15 @@
   .shared-badge { display: none; }
   .shared-head h1 { font-size: 16px; }
 }
+
+/* Abgabe: „Korrigieren“ je Person */
+.share-row-wrap { display: flex; align-items: center; border-bottom: 1px solid var(--line, #e3e6ea); }
+.share-row-wrap:last-child { border-bottom: 0; }
+.share-row-wrap .share-row { flex: 1 1 auto; border-bottom: 0; }
+.share-review { display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 12px; font-size: 14px; color: var(--muted); white-space: nowrap; }
+.share-review input { width: 22px; height: 22px; margin: 0; accent-color: #d0342c; }
+
+/* Korrekturmodus in der geteilten Ansicht */
+.shared-review-bar { display: flex; flex-wrap: wrap; gap: 8px; padding: 8px 16px; border-bottom: 1px solid var(--line); background: var(--panel); }
+.shared-review-bar[hidden] { display: none; }
+.shared-review-bar .btn.on, .shared-head .btn.on { border-color: #d0342c; color: #d0342c; }

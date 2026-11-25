@@ -24,6 +24,7 @@ const ICONS = {
   fsOff: [{ d: 'M9 4v5H4' }, { d: 'M15 4v5h5' }, { d: 'M20 15h-5v5' }, { d: 'M4 15h5v5' }],
   ruler: [{ d: 'M3 8.5h18v7H3z' }, { d: 'M6 15.5v-3M9 15.5v-2M12 15.5v-3M15 15.5v-2M18 15.5v-3' }],
   geo: [{ d: 'M2.5 18.5h19L12 9z' }, { d: 'M8 18.5a4 4 0 0 1 8 0' }, { d: 'M12 18.5v-2' }],
+  compass: [{ d: 'M12 3v3' }, { d: 'M12 6L6.5 20' }, { d: 'M12 6l5.5 14' }, { d: 'M8.5 15h7', o: 0.6 }],
 };
 
 function icon(kind) {
@@ -71,10 +72,11 @@ const customOf = (o, fallback) => (o && isHexColor(o.custom) ? o.custom.toLowerC
  *   onPageMenu(action, value)      — 'paper' (value: paper code), 'orient' ('p'|'l'), 'size' ('a4'|'a5'|'a3'), 'pdf', 'delete'
  *   onRuler()                      — Lineal-Knopf oder Taste r (Editor schaltet das Lineal um und ruft setRuler auf)
  *   onGeo()                        — Geodreieck-Knopf oder Taste g (Editor schaltet um und ruft setGeo auf)
+ *   onCompass()                    — Zirkel-Knopf oder Taste z (Editor schaltet um und ruft setCompass auf)
  * Returns {el, setHistory(canUndo, canRedo), setTitle(t), setPageInfo(i, n, {paper, orient, size}?), setTool(tool),
- *          setQuiz(available, active), setRuler(on), setGeo(on), getTool(), destroy()}
+ *          setQuiz(available, active), setRuler(on), setGeo(on), setCompass(on), getTool(), destroy()}
  */
-export function createToolbar({ onTool, onUndo, onRedo, onBack, onTitle, onPageMenu, onAddPage, onQuiz = () => {}, onRuler = () => {}, onGeo = () => {} }) {
+export function createToolbar({ onTool, onUndo, onRedo, onBack, onTitle, onPageMenu, onAddPage, onQuiz = () => {}, onRuler = () => {}, onGeo = () => {}, onCompass = () => {} }) {
   const saved = readPrefs().tool || {};
   let kind = KINDS.includes(saved.kind) ? saved.kind : 'pen';
   const mem = {
@@ -168,15 +170,22 @@ export function createToolbar({ onTool, onUndo, onRedo, onBack, onTitle, onPageM
     type: 'button', className: 'tb-btn tb-fs', hidden: !fullscreenSupported(), 'aria-pressed': 'false',
     onclick: () => toggleFullscreen(),
   });
-  // Lineal (Taste r): über der Schreibfläche, Zustand kommt vom Editor über setRuler()
-  const rulerBtn = h('button', {
-    type: 'button', className: 'tb-btn tb-ruler', title: 'Lineal (Taste R)', 'aria-label': 'Lineal',
-    'aria-pressed': 'false', onclick: () => onRuler(),
+  // Messwerkzeuge (Lineal r, Geodreieck g, Zirkel z): ein Knopf mit Auswahlmenü, damit die Leiste im Hochformat Platz behält.
+  // Zustand kommt vom Editor über setRuler/setGeo/setCompass.
+  const instr = { ruler: false, geo: false, compass: false };
+  const instrBtn = h('button', {
+    type: 'button', className: 'tb-btn tb-instr', title: 'Messwerkzeuge: Lineal (R), Geodreieck (G), Zirkel (Z)',
+    'aria-label': 'Messwerkzeuge', 'aria-haspopup': 'menu', onclick: () => menu(instrBtn, [
+      { label: 'Lineal', icon: instr.ruler ? '✓' : ' ', onSelect: () => onRuler() },
+      { label: 'Geodreieck', icon: instr.geo ? '✓' : ' ', onSelect: () => onGeo() },
+      { label: 'Zirkel', icon: instr.compass ? '✓' : ' ', onSelect: () => onCompass() },
+    ]),
   }, icon('ruler'));
-  const geoBtn = h('button', {
-    type: 'button', className: 'tb-btn tb-geo', title: 'Geodreieck (Taste G)', 'aria-label': 'Geodreieck',
-    'aria-pressed': 'false', onclick: () => onGeo(),
-  }, icon('geo'));
+  const renderInstr = () => {
+    const any = instr.ruler || instr.geo || instr.compass;
+    instrBtn.classList.toggle('on', any);
+    instrBtn.replaceChildren(icon(instr.geo && !instr.ruler && !instr.compass ? 'geo' : instr.compass && !instr.ruler && !instr.geo ? 'compass' : 'ruler'));
+  };
   const renderFs = () => {
     const on = isFullscreen();
     const label = on ? 'Vollbild beenden' : 'Vollbild';
@@ -193,7 +202,7 @@ export function createToolbar({ onTool, onUndo, onRedo, onBack, onTitle, onPageM
   const el = h('div', { className: 'tb', role: 'toolbar', 'aria-label': 'Werkzeuge' },
     h('div', { className: 'tb-left' }, backBtn, titleBtn),
     h('div', { className: 'tb-group tb-tools' }, toolBtns),
-    h('div', { className: 'tb-group tb-right' }, undoBtn, redoBtn, addBtn, quizBtn, fsBtn, rulerBtn, geoBtn, menuBtn, infoEl),
+    h('div', { className: 'tb-group tb-right' }, undoBtn, redoBtn, addBtn, quizBtn, fsBtn, instrBtn, menuBtn, infoEl),
     styleEl);
 
   function render() {
@@ -295,15 +304,24 @@ export function createToolbar({ onTool, onUndo, onRedo, onBack, onTitle, onPageM
       icon: p && (p.size || 'a4') === code ? '✓' : ' ',
       onSelect: () => onPageMenu('size', code),
     }));
+    const extra = [];
+    if (p && p.canPaste) extra.push({ label: 'Einfügen', icon: '📋', onSelect: () => onPageMenu('paste') });
+    extra.push({ label: p && p.label ? 'Lesezeichen ändern…' : 'Lesezeichen setzen…', icon: '🔖', onSelect: () => onPageMenu('bookmark') });
+    if (p && p.hasBookmarks) extra.push({ label: 'Lesezeichen anzeigen…', icon: '☰', onSelect: () => onPageMenu('bookmarks') });
+    if (p && p.hasCovers) extra.push({ label: 'Abdeckungen dieser Seite entfernen', icon: ' ', onSelect: () => onPageMenu('uncover') });
+    if (p && p.hasCorrections) {
+      extra.push({ label: p.showCorrections ? 'Korrekturen ausblenden' : 'Korrekturen anzeigen', icon: '✎', onSelect: () => onPageMenu('corrections') });
+      extra.push({ label: 'Korrekturen dieser Seite entfernen', icon: ' ', onSelect: () => onPageMenu('clearCorrections') });
+    }
     menu(anchor, [
       { label: 'Seitenübersicht', icon: '▦', onSelect: () => onPageMenu('overview') },
+      { label: 'Präsentieren', icon: '▶', onSelect: () => onPageMenu('present') },
       { label: 'Foto oder PDF einfügen…', icon: '🖼', onSelect: () => onPageMenu('import') },
+      { label: 'Titelblatt einfügen…', icon: ' ', onSelect: () => onPageMenu('cover') },
+      ...extra,
       'sep',
-      ...paperItems,
-      'sep',
-      ...orientItems,
-      'sep',
-      ...sizeItems,
+      // Papier, Ausrichtung und Format in einem eigenen Menü (sonst wird die Liste auf dem iPad zu lang)
+      { label: 'Papier und Format…', icon: '▤', onSelect: () => setTimeout(() => menu(anchor, [...paperItems, 'sep', ...orientItems, 'sep', ...sizeItems]), 0) },
       'sep',
       { label: 'Als PDF exportieren', icon: ' ', onSelect: () => onPageMenu('pdf') },
       { label: 'Seite duplizieren', icon: ' ', onSelect: () => onPageMenu('duplicate') },
@@ -332,6 +350,7 @@ export function createToolbar({ onTool, onUndo, onRedo, onBack, onTitle, onPageM
     else if (key === 'l') selectKind('lasso');
     else if (key === 'r') onRuler();
     else if (key === 'g') onGeo();
+    else if (key === 'z') onCompass();
     else return;
     e.preventDefault();
   }
@@ -347,16 +366,10 @@ export function createToolbar({ onTool, onUndo, onRedo, onBack, onTitle, onPageM
       quizBtn.classList.toggle('on', !!active);
       quizBtn.setAttribute('aria-pressed', active ? 'true' : 'false');
     },
-    /** Lineal-Knopf: an/aus (aria-pressed). */
-    setRuler(on) {
-      rulerBtn.classList.toggle('on', !!on);
-      rulerBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
-    },
-    /** Geodreieck-Knopf: an/aus (aria-pressed). */
-    setGeo(on) {
-      geoBtn.classList.toggle('on', !!on);
-      geoBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
-    },
+    /** Messwerkzeuge an/aus (Knopf „Messwerkzeuge“ hervorgehoben, wenn eines sichtbar ist). */
+    setRuler(on) { instr.ruler = !!on; renderInstr(); },
+    setGeo(on) { instr.geo = !!on; renderInstr(); },
+    setCompass(on) { instr.compass = !!on; renderInstr(); },
     setHistory(canUndo, canRedo) {
       undoBtn.disabled = !canUndo;
       redoBtn.disabled = !canRedo;

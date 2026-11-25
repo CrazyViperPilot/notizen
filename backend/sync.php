@@ -10,6 +10,8 @@ if (!defined('NZ_ENTRY')) { http_response_code(403); exit; }
 
 const NZ_SYNC_MAX_CHANGES = 50;
 const NZ_SYNC_MAX_STROKES = 8388608;    // 8 MB per page
+const NZ_SYNC_MAX_META = 32768;         // pages.meta (JSON), 32 KB
+const NZ_KEEP = '__keep__';             // field missing in the push (older client): keep the stored value
 const NZ_PULL_MAX_BYTES = 4194304;      // soft cap per pull/pages response
 const NZ_TRASH_MS = 2592000000;         // 30 days
 const NZ_CLEANUP_EVERY_MS = 86400000;   // once per day and user
@@ -60,7 +62,13 @@ function sync_clean($kind, $d)
     if ($kind === 'page' && $parent === null) fail(400, 'invalid', 'note_id fehlt.');
     $c[$parentKey] = $parent;
 
-    if ($kind === 'folder') $c['name'] = clean_text(isset($d['name']) ? $d['name'] : '', 200, 'Ordnername', true);
+    if ($kind === 'folder') {
+        $c['name'] = clean_text(isset($d['name']) ? $d['name'] : '', 200, 'Ordnername', true);
+        if (!array_key_exists('color', $d)) $c['color'] = NZ_KEEP;
+        elseif ($d['color'] === null || $d['color'] === '') $c['color'] = null;
+        elseif (is_string($d['color']) && preg_match('/^#[0-9a-fA-F]{6}$/', $d['color']) === 1) $c['color'] = strtolower($d['color']);
+        else fail(400, 'invalid', 'Farbe ungültig.');
+    }
     if ($kind === 'note') {
         $c['title'] = clean_text(isset($d['title']) ? $d['title'] : '', 200, 'Titel', true);
         $c['pinned'] = !empty($d['pinned']) ? 1 : 0;
@@ -69,7 +77,7 @@ function sync_clean($kind, $d)
         $pos = isset($d['pos']) ? $d['pos'] : null;
         if (!is_int($pos) && !is_float($pos) || !is_finite((float)$pos)) fail(400, 'invalid', 'pos ungültig.');
         $c['pos'] = (float)$pos;
-        $papers = ['blank', 'lined', 'grid', 'dotted', 'vocab', 'lin1', 'lin2', 'lin3', 'lin4', 'math'];
+        $papers = ['blank', 'lined', 'grid', 'dotted', 'vocab', 'lin1', 'lin2', 'lin3', 'lin4', 'math', 'coord', 'mm', 'music', 'iso'];
         $c['paper'] = isset($d['paper']) && in_array($d['paper'], $papers, true) ? $d['paper'] : fail(400, 'invalid', 'Papier ungültig.');
         $c['orient'] = isset($d['orient']) && in_array($d['orient'], ['p', 'l'], true) ? $d['orient'] : fail(400, 'invalid', 'Ausrichtung ungültig.');
         // Format: fehlt bei älteren Clients → null, sync_apply übernimmt dann das gespeicherte Format (neu: A4).
@@ -81,6 +89,18 @@ function sync_clean($kind, $d)
         $bg = isset($d['bg']) ? $d['bg'] : null;
         if ($bg !== null && !asset_id_valid($bg)) fail(400, 'invalid', 'Bild ungültig.');
         $c['bg'] = $bg;
+        // meta: kleines JSON-Objekt (Lesezeichen, Lernkartei, Abdeckungen) oder null; fehlt es → gespeicherten Wert behalten.
+        if (!array_key_exists('meta', $d)) {
+            $c['meta'] = NZ_KEEP;
+        } elseif ($d['meta'] === null || $d['meta'] === '') {
+            $c['meta'] = null;
+        } else {
+            $m = $d['meta'];
+            if (!is_string($m) || strlen($m) > NZ_SYNC_MAX_META) fail(400, 'invalid', 'Seiten-Metadaten ungültig.');
+            $dec = json_decode($m, true, 8);
+            if (!is_array($dec) || ($dec && array_keys($dec) === range(0, count($dec) - 1))) fail(400, 'invalid', 'Seiten-Metadaten ungültig.');
+            $c['meta'] = $m;
+        }
         $s = isset($d['strokes']) ? $d['strokes'] : '[]';
         if (!is_string($s)) fail(400, 'invalid', 'Striche ungültig.');
         if (strlen($s) > NZ_SYNC_MAX_STROKES) fail(413, 'page_too_large', 'Die Seite ist zu groß.');
@@ -96,9 +116,9 @@ function sync_clean($kind, $d)
 /** Content removed for a purged tombstone. */
 function sync_blank($kind, array $c)
 {
-    if ($kind === 'folder') $c['name'] = '';
+    if ($kind === 'folder') { $c['name'] = ''; $c['color'] = null; }
     if ($kind === 'note') { $c['title'] = ''; $c['pinned'] = 0; }
-    if ($kind === 'page') { $c['strokes'] = '[]'; $c['bytes'] = 0; $c['bg'] = null; }
+    if ($kind === 'page') { $c['strokes'] = '[]'; $c['bytes'] = 0; $c['bg'] = null; $c['meta'] = null; }
     return $c;
 }
 
@@ -114,7 +134,7 @@ function sync_row_out($kind, array $r, $withStrokes)
         'rev' => (int)$r['rev'],
         'seq' => (int)$r['seq'],
     ];
-    if ($kind === 'folder') { $o['parent_id'] = $r['parent_id']; $o['name'] = $r['name']; }
+    if ($kind === 'folder') { $o['parent_id'] = $r['parent_id']; $o['name'] = $r['name']; $o['color'] = isset($r['color']) ? $r['color'] : null; }
     if ($kind === 'note') { $o['folder_id'] = $r['folder_id']; $o['title'] = $r['title']; $o['pinned'] = (int)$r['pinned']; }
     if ($kind === 'page') {
         $o['note_id'] = $r['note_id'];
@@ -123,6 +143,7 @@ function sync_row_out($kind, array $r, $withStrokes)
         $o['orient'] = $r['orient'];
         $o['size'] = isset($r['size']) ? $r['size'] : 'a4';
         $o['bg'] = $r['bg'];
+        $o['meta'] = isset($r['meta']) ? $r['meta'] : null;
         $o['conflict'] = (int)$r['conflict'];
         $o['bytes'] = (int)$r['bytes'];
         if ($withStrokes) $o['strokes'] = $r['strokes'];
@@ -254,9 +275,9 @@ function sync_conflict_copy(array $winner, array $loserCols, array &$st)
 function row_cols($kind, array $row)
 {
     $keep = ['created_at', 'updated_at', 'deleted_at', 'purged', sync_kinds()[$kind]['parent']];
-    if ($kind === 'folder') $keep[] = 'name';
+    if ($kind === 'folder') { $keep[] = 'name'; $keep[] = 'color'; }
     if ($kind === 'note') { $keep[] = 'title'; $keep[] = 'pinned'; }
-    if ($kind === 'page') $keep = array_merge($keep, ['pos', 'paper', 'orient', 'size', 'bg', 'strokes', 'bytes', 'conflict']);
+    if ($kind === 'page') $keep = array_merge($keep, ['pos', 'paper', 'orient', 'size', 'bg', 'meta', 'strokes', 'bytes', 'conflict']);
     $c = [];
     foreach ($keep as $k) $c[$k] = $row[$k];
     return $c;
@@ -285,6 +306,9 @@ function sync_apply(array $ch, array &$st)
     $row = sync_get($kind, $id, true);
     if ($row && (int)$row['user_id'] !== $st['uid']) fail(403, 'forbidden', 'Kein Zugriff.');
     if ($kind === 'page' && $cols['size'] === null) $cols['size'] = $row ? $row['size'] : 'a4';
+    foreach (['color', 'meta'] as $f) {
+        if (array_key_exists($f, $cols) && $cols[$f] === NZ_KEEP) $cols[$f] = $row && isset($row[$f]) ? $row[$f] : null;
+    }
 
     // Explicit "delete permanently": always accepted.
     if ($cols['purged']) {
@@ -429,7 +453,7 @@ function route_sync_pull($u)
     $cands = tx(function () use ($uid, $since, $limit) {
         $cands = [];
         foreach (sync_kinds() as $kind => $k) {
-            $cols = $kind === 'page' ? 'id, note_id, pos, paper, orient, size, bg, bytes, conflict, created_at, updated_at, deleted_at, purged, rev, seq' : '*';
+            $cols = $kind === 'page' ? 'id, note_id, pos, paper, orient, size, bg, meta, bytes, conflict, created_at, updated_at, deleted_at, purged, rev, seq' : '*';
             foreach (all("SELECT $cols FROM {" . $k['table'] . '} WHERE user_id = ? AND seq > ? ORDER BY seq LIMIT ' . ($limit + 1), [$uid, $since]) as $r) {
                 $cands[] = ['kind' => $kind, 'row' => $r];
             }

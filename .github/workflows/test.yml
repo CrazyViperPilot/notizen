@@ -56,6 +56,25 @@ jobs:
       - name: JS-Tests
         run: if ls test/js/*.test.mjs > /dev/null 2>&1; then node --test test/js/*.test.mjs; else echo "Noch keine JS-Tests."; fi
 
+  pdfa:
+    # PDF/A-2b-Prüfung der vom PDF-Writer erzeugten Dateien mit veraPDF (offizielles Docker-Image).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+      - name: Beispiel-PDFs erzeugen
+        run: node test/pdfa/samples.mjs pdfa-out
+      - name: veraPDF (PDF/A-2b)
+        run: |
+          docker run --rm -v "$PWD/pdfa-out:/data" verapdf/cli:latest --flavour 2b --format text /data/einfach.pdf /data/formate.pdf | tee verapdf.txt
+          grep -q '^PASS' verapdf.txt || { echo "::error::veraPDF hat keine Datei geprüft."; exit 1; }
+          if grep -q '^FAIL' verapdf.txt; then
+            docker run --rm -v "$PWD/pdfa-out:/data" verapdf/cli:latest --flavour 2b --format text -v /data/einfach.pdf /data/formate.pdf || true
+            echo "::error::PDF/A-2b-Prüfung fehlgeschlagen."; exit 1
+          fi
+
   e2e:
     runs-on: ubuntu-latest
     services:

@@ -4,7 +4,13 @@
 // Lokale Achsen: u entlang des Lineals (bei 0° nach rechts), n senkrecht dazu (bei 0° nach unten).
 // Kante 0 = obere Längskante (n < 0), Kante 1 = untere Längskante (n > 0).
 
-export const RULER_MM = 300;     // Länge: 30 cm
+export let RULER_MM = 300;       // Länge: 30 cm (einstellbar: 15, 20, 30 cm, setRulerMm)
+
+/** Lineal-Länge in mm (150, 200 oder 300; anderes → 300). */
+export function setRulerMm(mm) {
+  RULER_MM = [150, 200, 300].includes(mm) ? mm : 300;
+  return RULER_MM;
+}
 export const RULER_H = 70;       // Höhe in CSS-px (zoomunabhängig)
 export const EDGE_GAP = 1.5;     // Projektionskante liegt eine halbe Stiftbreite außerhalb des Lineals (CSS-px)
 export const GRIP_R = 22;        // Radius des Dreh-Griffs (Trefferfläche 44 px)
@@ -123,4 +129,16 @@ export function ticks(pxPerMm, lengthMm) {
     else if (pxPerMm >= 2) out.push({ mm, len: 'mm' });
   }
   return out;
+}
+
+/** Live-Messwert eines geführten Strichs: Länge (cm, eine Nachkommastelle, deutsches Komma) und Winkel zur Waagerechten. */
+export function measureLine(p0, p1, pxPerMm) {
+  const dx = p1.x - p0.x, dy = p1.y - p0.y;
+  const mm = Math.hypot(dx, dy) / (pxPerMm > 0 ? pxPerMm : 1);
+  const len = (Math.round(mm) / 10).toFixed(1).replace('.', ',') + ' cm';
+  if (Math.hypot(dx, dy) < 2) return len;
+  let deg = Math.round((Math.atan2(-dy, dx) * 180) / Math.PI);   // math. positiv (gegen den Uhrzeigersinn), y nach oben
+  if (deg < 0) deg += 180;
+  if (deg === 180) deg = 0;
+  return deg ? `${len} · ${deg}°` : len;
 }

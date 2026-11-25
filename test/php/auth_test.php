@@ -5,7 +5,7 @@ function test_ping()
 {
     $r = (new Client())->get('ping');
     assert_status(200, $r);
-    assert_eq(5, $r['json']['schema']);
+    assert_eq(6, $r['json']['schema']);
     assert_true(!array_key_exists('php', $r['json']), 'kein php in ping');
     assert_true(!array_key_exists('mysql', $r['json']), 'kein mysql in ping');
 }

@@ -1,6 +1,8 @@
-// Dialog „Als PDF exportieren“: Titelblatt (Vorlage, Felder, Live-Vorschau) und PDF/A. Einstieg: openExportDialog(opts)
-// → Promise: null (abgebrochen) oder {pdfa, cover: null | {template, fields}}. Gestaltung: css/export.css.
-// Die letzte Wahl steht in localStorage 'notizen:export' (ohne Titel und Datum). Benutzertexte nur per textContent/Attribut.
+// Dialoge für das Titelblatt und den PDF-Export. Gestaltung: css/export.css. Benutzertexte nur per textContent/Attribut.
+//   openExportDialog({title, size, orient}) → Promise null | {pdfa, cover: null | {template, fields}, pageNumbers, outline}
+//   openCoverDialog({title, size, orient}) → Promise null | {template, fields}   („Titelblatt einfügen“, nur das Titelblatt)
+//   askPdfOptions(title, firstPage) → Promise null | {pdfa, cover: Cover-Objekt | null, pageNumbers, outline} für notePdf
+// Die letzte Wahl steht in localStorage 'notizen:export' (ohne Titel und Datum).
 
 import { h, dialog } from './dom.js';
 import { SIZES, TEMPLATES, FIELD_LABELS, buildCover, drawCoverPreview, todayDe } from '../export/cover.js';
@@ -9,6 +11,8 @@ const KEY = 'notizen:export';
 const PREVIEW_MS = 150;
 const MAX_LEN = 200;
 const CANVAS_PX = 480;   // Auflösung der Vorschau (Anzeige höchstens 240 px breit)
+
+const has = (obj, k) => Object.prototype.hasOwnProperty.call(obj, k);
 
 function readLast() {
   try {
@@ -21,25 +25,27 @@ function writeLast(state) {
   try { localStorage.setItem(KEY, JSON.stringify(state)); } catch { /* privater Modus */ }
 }
 
+/** Größe und Ausrichtung absichern (unbekannt → A4, Hochformat). */
+function pageOf(size, orient) {
+  return { sz: has(SIZES, size) ? size : 'a4', o: orient === 'l' ? 'l' : 'p' };
+}
+
 /**
- * openExportDialog({title, size = 'a4', orient = 'p'}) → Promise<null | {pdfa, cover}>
- * title: Notiztitel, wird als Titel des Titelblatts vorbelegt.
+ * Titelblatt-Teil (Vorlagenwahl, Felder, Live-Vorschau), gemeinsam für beide Dialoge.
+ * → {section, updatePreview, cancel(), result(), keep()}
+ *   result(): {template, fields} mit den Feldern der gewählten Vorlage (getrimmt)
+ *   keep():   Feldwerte ohne Titel und Datum (für die Merkliste)
  */
-export async function openExportDialog({ title = '', size = 'a4', orient = 'p' } = {}) {
-  const sz = Object.prototype.hasOwnProperty.call(SIZES, size) ? size : 'a4';
-  const o = orient === 'l' ? 'l' : 'p';
+function createCoverPart({ title, sz, o, last, hidden }) {
   const base = SIZES[sz];
   const pageW = o === 'l' ? base.h : base.w;
   const pageH = o === 'l' ? base.w : base.h;
 
-  const last = readLast();
   const state = {
-    cover: last.cover === true,
     template: TEMPLATES.some((t) => t.id === last.template) ? last.template : TEMPLATES[0].id,
-    pdfa: last.pdfa === true,
   };
 
-  // Feldwerte: Titel vom Notizen-Titel, Datum heute, übrige aus dem letzten Export
+  // Feldwerte: Titel vom Notizen-Titel, Datum heute, übrige aus der letzten Wahl
   const saved = last.fields && typeof last.fields === 'object' ? last.fields : {};
   const vals = {};
   for (const k of Object.keys(FIELD_LABELS)) {
@@ -49,6 +55,11 @@ export async function openExportDialog({ title = '', size = 'a4', orient = 'p' }
   }
 
   const tplOf = () => TEMPLATES.find((t) => t.id === state.template) || TEMPLATES[0];
+  const fieldValues = () => {
+    const fields = {};
+    for (const k of tplOf().fields) fields[k] = (vals[k] || '').trim();
+    return fields;
+  };
 
   // ── Vorschau ──
   const canvas = h('canvas', {
@@ -58,9 +69,7 @@ export async function openExportDialog({ title = '', size = 'a4', orient = 'p' }
   let timer = 0;
   function updatePreview() {
     try {
-      const fields = {};
-      for (const k of tplOf().fields) fields[k] = (vals[k] || '').trim();
-      drawCoverPreview(canvas, buildCover(state.template, fields, { size: sz, orient: o }));
+      drawCoverPreview(canvas, buildCover(state.template, fieldValues(), { size: sz, orient: o }));
     } catch { /* Vorschau ist nur Hilfe */ }
   }
   function schedulePreview() {
@@ -100,29 +109,67 @@ export async function openExportDialog({ title = '', size = 'a4', orient = 'p' }
       return b;
     }));
 
-  // ── Schalter ──
-  const coverSection = h('div', { className: 'exp-cover', hidden: !state.cover },
-    tplGroup, canvas, fieldsBox);
+  const section = h('div', { className: 'exp-cover', hidden }, tplGroup, canvas, fieldsBox);
+
+  markTpl();
+  renderFields();
+  updatePreview();
+
+  return {
+    section,
+    updatePreview,
+    cancel() { clearTimeout(timer); },
+    result() { return { template: state.template, fields: fieldValues() }; },
+    keep() {
+      const keep = {};
+      for (const k of Object.keys(vals)) if (k !== 'title' && k !== 'date') keep[k] = vals[k];
+      return keep;
+    },
+  };
+}
+
+/**
+ * Export-Dialog „Als PDF exportieren“: Titelblatt (ein/aus), Seitenzahlen, Lesezeichen, PDF/A.
+ * title: Notiztitel, wird als Titel des Titelblatts vorbelegt. → null (abgebrochen) oder
+ * {pdfa, cover: null | {template, fields}, pageNumbers, outline}.
+ */
+export async function openExportDialog({ title = '', size = 'a4', orient = 'p' } = {}) {
+  const { sz, o } = pageOf(size, orient);
+  const last = readLast();
+  const state = {
+    cover: last.cover === true,
+    pdfa: last.pdfa === true,
+    pageNumbers: last.pageNumbers === true,
+    outline: last.outline !== false,   // Standard: an
+  };
+  const part = createCoverPart({ title, sz, o, last, hidden: !state.cover });
+
   const coverBox = h('input', {
     type: 'checkbox', checked: state.cover,
     onchange: () => {
       state.cover = coverBox.checked;
-      coverSection.hidden = !state.cover;
-      if (state.cover) updatePreview();
+      part.section.hidden = !state.cover;
+      if (state.cover) part.updatePreview();
     },
+  });
+  const pageNumBox = h('input', {
+    type: 'checkbox', checked: state.pageNumbers,
+    onchange: () => { state.pageNumbers = pageNumBox.checked; },
+  });
+  const outlineBox = h('input', {
+    type: 'checkbox', checked: state.outline,
+    onchange: () => { state.outline = outlineBox.checked; },
   });
   const pdfaBox = h('input', {
     type: 'checkbox', checked: state.pdfa, 'aria-describedby': 'exp-pdfa-hint',
     onchange: () => { state.pdfa = pdfaBox.checked; },
   });
 
-  markTpl();
-  renderFields();
-  updatePreview();
-
   const body = h('div', { className: 'exp' },
     h('label', { className: 'exp-check' }, coverBox, h('span', { text: 'Titelblatt voranstellen' })),
-    coverSection,
+    part.section,
+    h('label', { className: 'exp-check' }, pageNumBox, h('span', { text: 'Seitenzahlen' })),
+    h('label', { className: 'exp-check' }, outlineBox, h('span', { text: 'Lesezeichen (Inhaltsverzeichnis)' })),
     h('label', { className: 'exp-check' }, pdfaBox, h('span', { text: 'PDF/A (Archivformat)' })),
     h('p', { className: 'exp-hint', id: 'exp-pdfa-hint', text: 'Für Langzeitarchivierung, z. B. Abgaben und Behörden.' }));
 
@@ -131,32 +178,61 @@ export async function openExportDialog({ title = '', size = 'a4', orient = 'p' }
     body,
     actions: [{ label: 'Abbrechen', value: null }, { label: 'Exportieren', value: 'ok', primary: true }],
   });
-  clearTimeout(timer);
+  part.cancel();
   if (choice !== 'ok') return null;
 
   // Letzte Wahl merken: ohne Titel und Datum
-  const keep = {};
-  for (const k of Object.keys(vals)) if (k !== 'title' && k !== 'date') keep[k] = vals[k];
-  writeLast({ cover: state.cover, template: state.template, pdfa: state.pdfa, fields: keep });
+  const sel = part.result();
+  writeLast({
+    ...last,
+    cover: state.cover,
+    template: sel.template,
+    pdfa: state.pdfa,
+    pageNumbers: state.pageNumbers,
+    outline: state.outline,
+    fields: part.keep(),
+  });
+  return {
+    pdfa: state.pdfa,
+    cover: state.cover ? sel : null,
+    pageNumbers: state.pageNumbers,
+    outline: state.outline,
+  };
+}
 
-  let cover = null;
-  if (state.cover) {
-    const fields = {};
-    for (const k of tplOf().fields) fields[k] = (vals[k] || '').trim();
-    cover = { template: state.template, fields };
-  }
-  return { pdfa: state.pdfa, cover };
+/**
+ * Nur das Titelblatt („Titelblatt einfügen“): vorbelegter Titel, Vorlage, Felder, Live-Vorschau.
+ * → null (abgebrochen) oder {template, fields} für buildCover(template, fields, {size, orient}).
+ * Merkt Vorlage und Felder in 'notizen:export' (wie der Export-Dialog), die übrigen Werte bleiben.
+ */
+export async function openCoverDialog({ title = '', size = 'a4', orient = 'p' } = {}) {
+  const { sz, o } = pageOf(size, orient);
+  const last = readLast();
+  const part = createCoverPart({ title, sz, o, last, hidden: false });
+
+  const choice = await dialog({
+    title: 'Titelblatt einfügen',
+    body: h('div', { className: 'exp' }, part.section),
+    actions: [{ label: 'Abbrechen', value: null }, { label: 'Einfügen', value: 'ok', primary: true }],
+  });
+  part.cancel();
+  if (choice !== 'ok') return null;
+
+  const sel = part.result();
+  writeLast({ ...last, template: sel.template, fields: part.keep() });
+  return sel;
 }
 
 /**
  * Fragt die Export-Optionen ab und baut das Titelblatt. firstPage: erste Seite der Notiz (Format und Ausrichtung des
- * Titelblatts). → null (abgebrochen) oder {pdfa, cover} mit cover als Cover-Objekt für notePdf oder null.
+ * Titelblatts). → null (abgebrochen) oder {pdfa, cover, pageNumbers, outline}; cover ist ein Cover-Objekt für notePdf
+ * oder null.
  */
 export async function askPdfOptions(title, firstPage = null) {
-  const size = firstPage && Object.prototype.hasOwnProperty.call(SIZES, firstPage.size) ? firstPage.size : 'a4';
+  const size = firstPage && has(SIZES, firstPage.size) ? firstPage.size : 'a4';
   const orient = firstPage && firstPage.orient === 'l' ? 'l' : 'p';
   const r = await openExportDialog({ title, size, orient });
   if (!r) return null;
   const cover = r.cover ? buildCover(r.cover.template, r.cover.fields, { size, orient }) : null;
-  return { pdfa: !!r.pdfa, cover };
+  return { pdfa: !!r.pdfa, cover, pageNumbers: !!r.pageNumbers, outline: !!r.outline };
 }

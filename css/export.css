@@ -17,6 +17,8 @@
   padding: 8px 0 4px; border-top: 1px solid var(--line);
 }
 .exp-cover[hidden] { display: none; }
+/* Titelblatt-Dialog („Titelblatt einfügen“): der Abschnitt steht allein, ohne Trennlinie oben */
+.exp > .exp-cover:first-child { border-top: 0; padding-top: 0; }
 
 /* Vorlagenwahl als Segmente */
 .exp-seg { display: flex; border: 1px solid var(--line); border-radius: var(--radius-sm); overflow: hidden; }
