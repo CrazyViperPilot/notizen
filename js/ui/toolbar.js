@@ -23,6 +23,7 @@ const ICONS = {
   fsOn: [{ d: 'M4 9V4h5' }, { d: 'M15 4h5v5' }, { d: 'M20 15v5h-5' }, { d: 'M9 20H4v-5' }],
   fsOff: [{ d: 'M9 4v5H4' }, { d: 'M15 4v5h5' }, { d: 'M20 15h-5v5' }, { d: 'M4 15h5v5' }],
   ruler: [{ d: 'M3 8.5h18v7H3z' }, { d: 'M6 15.5v-3M9 15.5v-2M12 15.5v-3M15 15.5v-2M18 15.5v-3' }],
+  geo: [{ d: 'M2.5 18.5h19L12 9z' }, { d: 'M8 18.5a4 4 0 0 1 8 0' }, { d: 'M12 18.5v-2' }],
 };
 
 function icon(kind) {
@@ -69,10 +70,11 @@ const customOf = (o, fallback) => (o && isHexColor(o.custom) ? o.custom.toLowerC
  *   onTitle(newTitle)              — user renamed the note (dialog already confirmed)
  *   onPageMenu(action, value)      — 'paper' (value: paper code), 'orient' ('p'|'l'), 'size' ('a4'|'a5'|'a3'), 'pdf', 'delete'
  *   onRuler()                      — Lineal-Knopf oder Taste r (Editor schaltet das Lineal um und ruft setRuler auf)
+ *   onGeo()                        — Geodreieck-Knopf oder Taste g (Editor schaltet um und ruft setGeo auf)
  * Returns {el, setHistory(canUndo, canRedo), setTitle(t), setPageInfo(i, n, {paper, orient, size}?), setTool(tool),
- *          setQuiz(available, active), setRuler(on), getTool(), destroy()}
+ *          setQuiz(available, active), setRuler(on), setGeo(on), getTool(), destroy()}
  */
-export function createToolbar({ onTool, onUndo, onRedo, onBack, onTitle, onPageMenu, onAddPage, onQuiz = () => {}, onRuler = () => {} }) {
+export function createToolbar({ onTool, onUndo, onRedo, onBack, onTitle, onPageMenu, onAddPage, onQuiz = () => {}, onRuler = () => {}, onGeo = () => {} }) {
   const saved = readPrefs().tool || {};
   let kind = KINDS.includes(saved.kind) ? saved.kind : 'pen';
   const mem = {
@@ -171,6 +173,10 @@ export function createToolbar({ onTool, onUndo, onRedo, onBack, onTitle, onPageM
     type: 'button', className: 'tb-btn tb-ruler', title: 'Lineal (Taste R)', 'aria-label': 'Lineal',
     'aria-pressed': 'false', onclick: () => onRuler(),
   }, icon('ruler'));
+  const geoBtn = h('button', {
+    type: 'button', className: 'tb-btn tb-geo', title: 'Geodreieck (Taste G)', 'aria-label': 'Geodreieck',
+    'aria-pressed': 'false', onclick: () => onGeo(),
+  }, icon('geo'));
   const renderFs = () => {
     const on = isFullscreen();
     const label = on ? 'Vollbild beenden' : 'Vollbild';
@@ -187,7 +193,7 @@ export function createToolbar({ onTool, onUndo, onRedo, onBack, onTitle, onPageM
   const el = h('div', { className: 'tb', role: 'toolbar', 'aria-label': 'Werkzeuge' },
     h('div', { className: 'tb-left' }, backBtn, titleBtn),
     h('div', { className: 'tb-group tb-tools' }, toolBtns),
-    h('div', { className: 'tb-group tb-right' }, undoBtn, redoBtn, addBtn, quizBtn, fsBtn, rulerBtn, menuBtn, infoEl),
+    h('div', { className: 'tb-group tb-right' }, undoBtn, redoBtn, addBtn, quizBtn, fsBtn, rulerBtn, geoBtn, menuBtn, infoEl),
     styleEl);
 
   function render() {
@@ -325,6 +331,7 @@ export function createToolbar({ onTool, onUndo, onRedo, onBack, onTitle, onPageM
     else if (key === 'e') selectKind('eraser');
     else if (key === 'l') selectKind('lasso');
     else if (key === 'r') onRuler();
+    else if (key === 'g') onGeo();
     else return;
     e.preventDefault();
   }
@@ -344,6 +351,11 @@ export function createToolbar({ onTool, onUndo, onRedo, onBack, onTitle, onPageM
     setRuler(on) {
       rulerBtn.classList.toggle('on', !!on);
       rulerBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    },
+    /** Geodreieck-Knopf: an/aus (aria-pressed). */
+    setGeo(on) {
+      geoBtn.classList.toggle('on', !!on);
+      geoBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
     },
     setHistory(canUndo, canRedo) {
       undoBtn.disabled = !canUndo;

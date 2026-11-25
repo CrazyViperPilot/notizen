@@ -10,6 +10,7 @@ import { createSurface } from '../ink/surface.js';
 import { decodeStrokes, encodeStrokes } from '../ink/codec.js';
 import { createToolbar } from './toolbar.js';
 import { createRuler } from './ruler.js';
+import { createGeodreieck } from './geodreieck.js';
 import { h, toast, confirmDialog, dialog } from './dom.js';
 import { PEN_COLORS, PEN_COLOR_NAMES, HL_COLORS, HL_COLOR_NAMES } from '../config.js';
 
@@ -72,6 +73,7 @@ export async function mountEditor(el, { noteId }, ctx) {
     onAddPage: () => addPage(),
     onQuiz: () => (quizSide ? stopQuiz() : startQuiz('right')),
     onRuler: () => { ruler.toggle(); toolbar.setRuler(ruler.isVisible()); },
+    onGeo: () => { geo.toggle(); toolbar.setGeo(geo.isVisible()); },
   });
   const holder = h('div', { className: 'ed-surface' });
   const hint = h('div', { className: 'ed-hint', role: 'status', hidden: true, text: 'Seite wird geladen…' });
@@ -206,6 +208,9 @@ export async function mountEditor(el, { noteId }, ctx) {
   // Lineal: nur im Editor. Zustand (Lage, Winkel, an/aus) aus localStorage 'notizen:ruler'.
   const ruler = createRuler(holder, surface);
   toolbar.setRuler(ruler.isVisible());
+  // Geodreieck: wie das Lineal, Zustand in 'notizen:geodreieck'.
+  const geo = createGeodreieck(holder, surface);
+  toolbar.setGeo(geo.isVisible());
 
   // ───── state ─────
   let pages = [];                       // model rows in page order
@@ -478,6 +483,7 @@ export async function mountEditor(el, { noteId }, ctx) {
     model.off('change', onModelChange);
     document.removeEventListener('keydown', onSelKey);
     ruler.destroy();
+    geo.destroy();
     toolbar.destroy();
     surface.destroy();
     el.replaceChildren(h('div', { style: { padding: '24px' } },
@@ -494,6 +500,7 @@ export async function mountEditor(el, { noteId }, ctx) {
     model.off('change', onModelChange);
     document.removeEventListener('keydown', onSelKey);
     ruler.destroy();
+    geo.destroy();
     toolbar.destroy();
     surface.destroy();
     el.replaceChildren();

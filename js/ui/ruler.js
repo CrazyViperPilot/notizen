@@ -1,5 +1,5 @@
 // Lineal im Editor: transparentes 30-cm-Lineal über der Schreibfläche (nur im Editor, nicht in shared.js).
-// Stift: an einer Längskante ansetzen → gerade Linie (die Surface ruft setGuide auf, Projektion aus ruler-geom.js).
+// Stift: an einer Längskante ansetzen → gerade Linie (die Surface nutzt addGuide, Projektion aus ruler-geom.js).
 // Finger und Maus: verschieben; Dreh-Griff am rechten Ende ziehen; zwei Finger auf dem Lineal drehen und verschieben;
 // Doppeltipp auf das Lineal setzt den Winkel auf 0°. Der Stift schreibt immer, Pen-Ereignisse werden nie abgefangen.
 // Geometrie in ruler-geom.js; hier nur DOM und Eingabe. Benutzertexte nur über textContent.
@@ -266,7 +266,7 @@ export function createRuler(holder, surface) {
     canvas.hidden = false;
     redraw();
     place();
-    surface.setGuide(guide);
+    surface.addGuide(guide);
     save();
   }
 
@@ -279,7 +279,7 @@ export function createRuler(holder, surface) {
     lastTap = null;
     ptrs.clear();
     swallow.clear();
-    surface.setGuide(null);
+    surface.removeGuide(guide);
     save();
   }
 
@@ -298,7 +298,7 @@ export function createRuler(holder, surface) {
       window.removeEventListener('pointercancel', onUp, true);
       surface.removeEventListener('view', onView);
       save();                                  // Sichtbarkeit bleibt gespeichert
-      if (visible) surface.setGuide(null);
+      surface.removeGuide(guide);
       visible = false;
       gesture = null;
       ptrs.clear();

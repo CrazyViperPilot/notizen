@@ -94,7 +94,7 @@ class Surface extends EventTarget {
     this._raf = 0;
     this._detailTimer = 0;
     this.detailState = null;    // {z, ox, oy} the detail canvas was rendered with
-    this.guide = null;          // ruler straightedge (setGuide)
+    this.guides = new Set();    // ruler / set square straightedges (addGuide)
     this.quiz = null;           // vocab quiz: {side: 'right'|'left', open: Map<pageId, Set<rowIndex>>}
     this._tap = null;           // finger tap candidate on a quiz cover
 
@@ -351,10 +351,15 @@ class Surface extends EventTarget {
   viewScale() { return this.k * this.z; }
 
   /**
-   * Straightedge for the pen (ruler): guide = {start(pt) → edge|null, project(pt, edge) → {x, y}} with points in CSS px
-   * relative to the container, or null. A pen stroke that starts where start() returns an edge is projected onto it.
+   * Straightedges for the pen (ruler, set square): guide = {start(pt) → edge|null, project(pt, edge) → {x, y}} with points
+   * in CSS px relative to the container. A stroke that starts where a guide's start() returns an edge is projected onto it.
+   * Several guides may be active; the first one that answers wins.
    */
-  setGuide(guide) { this.guide = guide && typeof guide.start === 'function' && typeof guide.project === 'function' ? guide : null; }
+  addGuide(guide) {
+    if (guide && typeof guide.start === 'function' && typeof guide.project === 'function') this.guides.add(guide);
+  }
+
+  removeGuide(guide) { this.guides.delete(guide); }
 
   /** Emit pending 'strokes' events now (call before leaving the editor). */
   flush() {
@@ -1236,7 +1241,7 @@ class Surface extends EventTarget {
       eraseMode: this.tool.mode === 'part' ? 'part' : 'stroke', before: kind === 'eraser' && this.tool.mode === 'part' ? P.strokes.map(snap) : null,
       smoother: new Smoother(SMOOTHING[this.smoothing] || SMOOTHING.normal), drawn: 0, lastScreen: pt,
       erased: [], lastU: null, splitChanged: false,
-      edge: null,
+      edge: null, guide: null,
       holdPt: null, holdTimer: 0, snapped: null, snapDrawn: false,
       stroke: kind === 'eraser' || kind === 'lasso' ? null : {
         id: strokeId(), type: kind === 'highlighter' ? 'h' : kind === 'pencil' ? 'b' : 'p',
@@ -1246,9 +1251,12 @@ class Surface extends EventTarget {
     // Bleistift: live deckend zeichnen (schrittweise, schnell), die Live-Ebene als Ganzes halbtransparent anzeigen
     this.live.style.opacity = kind === 'pencil' ? String(PENCIL_ALPHA) : '';
     // Lineal: Stift-, Bleistift- und Textmarker-Striche, die an seiner Kante beginnen, laufen entlang der Kante.
-    if (this.guide && this.drawing.stroke) {
-      try { this.drawing.edge = this.guide.start(pt); } catch { this.drawing.edge = null; }
-      if (this.drawing.edge === undefined) this.drawing.edge = null;
+    if (this.guides.size && this.drawing.stroke) {
+      for (const g of this.guides) {
+        let edge = null;
+        try { edge = g.start(pt); } catch { edge = null; }
+        if (edge != null) { this.drawing.edge = edge; this.drawing.guide = g; break; }
+      }
     }
     this._addSample(e);
     this._schedule();
@@ -1257,8 +1265,8 @@ class Surface extends EventTarget {
   _addSample(e) {
     const d = this.drawing;
     let pt = this._local(e);
-    if (d.edge != null && this.guide) {
-      try { const q = this.guide.project(pt, d.edge); if (q && Number.isFinite(q.x) && Number.isFinite(q.y)) pt = q; } catch { /* Lineal weg */ }
+    if (d.guide && this.guides.has(d.guide)) {
+      try { const q = d.guide.project(pt, d.edge); if (q && Number.isFinite(q.x) && Number.isFinite(q.y)) pt = q; } catch { /* Lineal weg */ }
     }
     d.lastScreen = pt;
     const hit = this._pageAt(pt.x, pt.y, d.P);

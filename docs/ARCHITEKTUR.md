@@ -551,7 +551,7 @@ Werkzeug `'pencil'` (Name „Bleistift“, Taste **b**). Strich-Typ `"b"` im For
 
 ### 13.2 Lineal (`js/ui/ruler.js`, `js/ui/ruler-geom.js`)
 - Canvas `.ruler` im Surface-Container (`pointer-events: none`), Länge 300 mm × `10 · surface.viewScale()` px, Höhe 70 CSS-px.
-  Surface-Schnittstellen: `viewScale()`, Event `'view'` (nach jeder Ansichtsänderung), `setGuide({start(pt), project(pt, edge)} | null)`.
+  Surface-Schnittstellen: `viewScale()`, Event `'view'` (nach jeder Ansichtsänderung), `addGuide(guide)` / `removeGuide(guide)` mit guide = `{start(pt), project(pt, edge)}` (mehrere gleichzeitig, z. B. Lineal und Geodreieck; die erste passende gewinnt).
 - Finger/Maus: Capture-Listener auf `.ed-body`, schluckt nur Zeiger auf dem Lineal; der Stift geht immer an die Surface.
 - Stiftführung: `start` liefert Kante 0/1, wenn der Strich höchstens 24 px außerhalb einer Längskante beginnt; jeder Punkt des Strichs
   wird dann senkrecht auf die Kantengerade projiziert (Stift, Bleistift, Textmarker).
