@@ -134,11 +134,13 @@ Verbindlich: ARCHITEKTUR Abschnitt 11. **Stand: P23–P30 erledigt (Nov 2026).**
 ---
 
 # Runde 4 (Nov 2026): Seitenformate, Lineal, Titelblatt, PDF/A
-Verbindlich: ARCHITEKTUR Abschnitt 13. **Stand: P31–P34 erledigt.**
+Verbindlich: ARCHITEKTUR Abschnitt 13. **Stand: P31–P36 erledigt.**
 
 | Paket | Inhalt | Wer |
 |---|---|---|
 | P31 | Seitenformate A4/A5/A3: Migration 005, Sync, config/paper/render/surface/pdf, Model, Menüs, Backup, Tests | Opus |
 | P32 | Lineal: `ruler-geom.js`, `ruler.js`, Toolbar-Knopf, Editor; Surface-Schnittstellen `viewScale`/`view`/`setGuide` (Opus) | Haiku |
 | P33 | Titelblatt-Vorlagen `cover.js` + Export-Dialog | Haiku |
+| P35 | Geodreieck: `geodreieck-geom.js`, `geodreieck.js`, Tests | Haiku |
+| P36 | Surface: mehrere Führungen (`addGuide`), Knopf/Taste g, E2E `geodreieck.e2e.mjs`, Release v15 | Opus |
 | P34 | PDF: Titelblatt-Seite, PDF/A-2b (XMP, ICC, ID), Verdrahtung, E2E `ruler-export.e2e.mjs`, Release v14 | Opus |

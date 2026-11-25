@@ -110,6 +110,10 @@ Das erste Admin-Konto kommt aus GitHub-Secrets (Abschnitt 9). Weitere Admins kan
   (Knopf „Lineal“, Taste **r**). Mit Finger/Maus **verschieben**, mit zwei Fingern oder dem Dreh-Griff **drehen**
   (rastet bei 0°/45°/90° ein, Doppeltipp = 0°). Ein Stift-Strich, der an einer Längskante beginnt, läuft gerade an der Kante entlang.
   Lage, Winkel und an/aus werden pro Gerät gemerkt.
+- **Geodreieck** (wie im Mathematikunterricht): lange Kante 16 cm mit mm-Skala und 0 in der Mitte, Winkelmesser 0–180° in zwei
+  gegenläufigen Reihen um den Nullpunkt, Parallelen im 5-mm-Abstand, rechter Winkel an der Spitze. Knopf „Geodreieck“, Taste **g**.
+  Verschieben und Drehen wie beim Lineal (Drehpunkt ist der Nullpunkt, Griff bei der Spitze); der Stift zeichnet an allen drei Kanten
+  gerade Linien. Lineal und Geodreieck können gleichzeitig sichtbar sein.
 
 ### 6.4 Speichern
 - **Automatisch**, ohne Speichern-Knopf. Lokal spätestens 1 s nach dem letzten Strich, auf dem Server

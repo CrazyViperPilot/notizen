@@ -71,6 +71,13 @@
 }
 .ruler-angle[hidden] { display: none; }
 
+/* Geodreieck (js/ui/geodreieck.js): wie das Lineal, z 4, pointer-events none. Dreiecksform → Schatten per filter (folgt dem Alpha-Kanal). */
+.geodreieck {
+  position: absolute; left: 0; top: 0; z-index: 4; pointer-events: none; touch-action: none;
+  filter: drop-shadow(0 1px 2px rgba(20, 30, 50, .2));
+}
+.geodreieck[hidden] { display: none; }
+
 /* Eigene Farbe: Farbpunkt mit Regenbogen-Ring */
 .tb-custom { position: relative; }
 .tb-custom::before {

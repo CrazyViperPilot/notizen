@@ -557,6 +557,12 @@ Werkzeug `'pencil'` (Name „Bleistift“, Taste **b**). Strich-Typ `"b"` im For
   wird dann senkrecht auf die Kantengerade projiziert (Stift, Bleistift, Textmarker).
 - Zustand `localStorage['notizen:ruler']` = `{x, y, angle, visible}`.
 
+### 13.2a Geodreieck (`js/ui/geodreieck.js`, `js/ui/geodreieck-geom.js`)
+- Lokale Form in mm: Hypotenuse u = −80 … 80 auf n = 0, Spitze (rechter Winkel) bei (0, −80). `state = {x, y, angle}` mit (x, y) = Nullpunkt
+  (Mitte der Hypotenuse) = Drehpunkt. Aufdruck: Hypotenusen-Skala −70 … 70 mm, Winkelmesser Radius 52 mm (Zahlen erst ab 13 mm über der Kante),
+  Parallelen alle 5 mm. Canvas `.geodreieck`, Zustand `localStorage['notizen:geodreieck']`.
+- Stiftführung über `surface.addGuide`: Kante 0 = Hypotenuse, 1 = linke, 2 = rechte Kathete (`geoEdgeAt`, `geoProject`).
+
 ### 13.3 Titelblatt (`js/export/cover.js`, `js/ui/export-dialog.js`)
 - `buildCover(template, fields, {size, orient}, renderText)` → Cover-Objekt `{size, orient, boxes, lines, texts}` (0,1 mm).
   Texte werden im Browser mit `canvasText` bei 300 dpi als Graustufenbild gerendert (keine Schriften im PDF, deshalb PDF/A-tauglich).
