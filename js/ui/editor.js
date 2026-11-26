@@ -144,25 +144,34 @@ export async function mountEditor(el, { noteId }, ctx) {
     selBar.style.top = Math.max(56, r.y - 12) + 'px';
   }
 
+  /** Lasso → „Farbe“: Palette, die 3 eigenen Slotfarben des Werkzeugs (Stift bzw. Textmarker) und ein echter Farbwähler. */
   async function pickSelColor() {
     if (!selInfo) return;
     const type = selInfo.hasPen ? 'p' : 'h';
     const list = type === 'p' ? PEN_COLORS : HL_COLORS;
     const names = type === 'p' ? PEN_COLOR_NAMES : HL_COLOR_NAMES;
-    const picker = h('input', { type: 'color', value: '#0a8f8f', className: 'tb-color-input' });
+    const slots = toolbar.getCustomColors(type === 'p' ? 'pen' : 'highlighter');
     const r = await dialog({
       title: type === 'p' ? 'Farbe der Auswahl' : 'Farbe der Markierung',
-      body: (close) => h('div', { className: 'sel-colors' },
-        list.map((c, i) => h('button', { type: 'button', className: 'sw', title: names[i], 'aria-label': names[i], style: { background: c }, onclick: () => close(i) })),
-        h('button', { type: 'button', className: 'sw', title: 'Eigene Farbe', 'aria-label': 'Eigene Farbe',
-          style: { background: 'conic-gradient(#ff3b30, #ffcc00, #34c759, #00c7be, #007aff, #af52de, #ff2d55, #ff3b30)' },
-          onclick: () => { picker.onchange = () => close(picker.value.toLowerCase()); try { picker.showPicker ? picker.showPicker() : picker.click(); } catch { picker.click(); } } }),
-        picker),
+      body: (close) => {
+        // Direkt antippbares <input type="color"> (unsichtbar über dem Regenbogen-Knopf); 'change' schließt mit der Farbe.
+        const picker = h('input', {
+          type: 'color', className: 'tb-color-input', value: slots[0] || '#0a8f8f', 'aria-label': 'Beliebige Farbe wählen',
+          onchange: () => close(picker.value.toLowerCase()),
+        });
+        return h('div', { className: 'sel-colors' },
+          list.map((c, i) => h('button', { type: 'button', className: 'sw', title: names[i], 'aria-label': names[i], style: { background: c }, onclick: () => close(i) })),
+          h('label', { className: 'sw sw-any', title: 'Beliebige Farbe' }, picker),
+          slots.length ? h('span', { className: 'sel-slots-label', text: 'Eigene Farben' }) : null,
+          slots.map((c, i) => h('button', {
+            type: 'button', className: 'sw', title: 'Eigene Farbe ' + (i + 1), 'aria-label': 'Eigene Farbe ' + (i + 1),
+            style: { background: c }, onclick: () => close(c),
+          })));
+      },
       actions: [{ label: 'Abbrechen', value: null }],
     });
     if (r !== null && r !== undefined) surface.selectionAction('color', r, type);
   }
-
 
   function copySel(silent = false) {
     const clip = surface.copySelection();
@@ -504,7 +513,7 @@ export async function mountEditor(el, { noteId }, ctx) {
         await reloadPages();
         return;
       }
-      if (action === 'delete') return deletePage(cur);
+      if (action === 'delete') return await deletePage(cur);
       if (action === 'bookmark') {
         const label = await promptText({ title: 'Lesezeichen', label: 'Name (leer = entfernen)', value: model.pageMeta(cur).label || '',
           okLabel: 'Speichern', maxLength: 80, allowEmpty: true });
@@ -562,20 +571,25 @@ export async function mountEditor(el, { noteId }, ctx) {
     }
   }
 
+  /** Blatt löschen (mit Nachfrage). Ist es das einzige Blatt, wird vorher ein leeres Ersatzblatt angelegt. */
   async function deletePage(cur) {
-    if (pages.length <= 1) {
-      toast('Die letzte Seite kann nicht gelöscht werden.');
-      return;
-    }
+    const last = pages.length <= 1;
     const ok = await confirmDialog({
-      title: 'Seite löschen',
-      message: 'Diese Seite mit allem, was darauf steht, entfernen?',
+      title: 'Blatt löschen?',
+      message: last
+        ? 'Dieses Blatt mit allem, was darauf steht, löschen? Das ist das einzige Blatt dieser Notiz. Es wird durch ein leeres Blatt ersetzt.'
+        : 'Dieses Blatt mit allem, was darauf steht, löschen?',
       okLabel: 'Löschen',
       danger: true,
     });
     if (!ok) return;
     await settle();
     const idx = Math.max(0, pages.findIndex((p) => p.id === cur.id));
+    // Eine Notiz braucht mindestens ein Blatt: erst das leere Ersatzblatt (gleiches Papier/Format), dann das alte löschen.
+    const rows = await model.listPages(noteId);
+    if (rows.length === 1 && rows[0].id === cur.id) {
+      await model.addPage(noteId, cur.id, { paper: cur.paper, orient: cur.orient, size: cur.size || 'a4' });
+    }
     await model.deletePage(cur.id);
     await reloadPages();
     const next = pages[Math.min(idx, pages.length - 1)];

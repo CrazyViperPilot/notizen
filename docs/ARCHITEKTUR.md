@@ -442,7 +442,7 @@ Beim Start ruft die App `navigator.storage.persist()` auf.
   der Seite, von deren Punkten mindestens die Hälfte im Polygon liegt.
 - Auswahl: gestrichelter Rahmen + Griff unten rechts (gleichmäßig skalieren). Ziehen im Rahmen verschiebt (nur auf derselben Seite),
   Ziehen am Griff skaliert (Strichbreite bleibt). Antippen außerhalb hebt die Auswahl auf. Finger verschieben weiterhin die Ansicht.
-- Aktionsleiste über der Auswahl: **Farbe** (Palette des Werkzeugs inkl. eigener Farbe), **Duplizieren** (versetzt eingefügt, neue Auswahl),
+- Aktionsleiste über der Auswahl: **Farbe** (Palette des Werkzeugs, beliebige Farbe über den System-Farbwähler, die 3 eigenen Farbslots des Werkzeugs), **Duplizieren** (versetzt eingefügt, neue Auswahl),
   **Löschen**. Undo/Redo als ein Schritt `{type: 'replace', pageId, before, after}`.
 
 ### 10.3 Teil-Radierer
@@ -514,7 +514,7 @@ Angelehnt an deutsche Schulhefte; alle Maße in `config.js` (`LINEATUR`), damit 
 - **Zwei Finger tippen = Rückgängig, drei Finger tippen = Wiederholen** (alle Finger < 350 ms, Bewegung < 12 px; ein dabei
   entstandener Mini-Zoom wird zurückgesetzt). Event `gesture` {action: 'undo'|'redo'} → kurzer Hinweis im Editor.
 - **Pipette:** Ein Finger 500 ms ruhig auf einem Strich → Event `pickcolor` {type, color}; der Editor stellt Werkzeug und Farbe
-  ein (Stift vor Textmarker; Hex-Farben werden zur eigenen Farbe des Werkzeugs).
+  ein (Stift vor Textmarker; eine Hex-Farbe, die in keinem eigenen Farbslot steht, kommt in den zuletzt aktiven Slot).
 - **Ganze Seite:** Schnelles Zusammenziehen (< 350 ms, Zoom sinkt um > 20 %) bei Zoom > 1 springt auf Zoom 1 (Seitenbreite).
 - **Glättung:** `localStorage['notizen:prefs'].smoothing` = 'direct' | 'normal' | 'strong' (Konto-Seite) → `Smoother(k)` mit
   k = 0,85 / 0,55 / 0,3 (`SMOOTHING` in stroke.js); Surface-Option `smoothing`, `setSmoothing()`.
@@ -522,7 +522,7 @@ Angelehnt an deutsche Schulhefte; alle Maße in `config.js` (`LINEATUR`), damit 
 ## 12. Bleistift (Schraffieren)
 
 Werkzeug `'pencil'` (Name „Bleistift“, Taste **b**). Strich-Typ `"b"` im Format aus 3.3.
-- **Farben und Stärken** wie der Stift (Stift-Palette, „Eigene Farbe“, 3 Stärken). Standard: Schwarz, Stärke „Mittel“.
+- **Farben und Stärken** wie der Stift (Stift-Palette, 3 eigene Farbslots, 3 Stärken). Standard: Schwarz, Stärke „Mittel“.
   Einstellungen in `localStorage['notizen:prefs'].tool.pencil` (ältere Daten ohne `pencil` gelten als Standard).
 - **Punktwert:** Der dritte Wert jedes Punkts ist beim Bleistift der **Radius × 4** (`PENCIL_P_SCALE` in `stroke.js`), also höchstens
   ca. 6,4 mm. `radiusAt(stroke, p)` liefert ihn; `penShapes`, `maxRadius`, `bbox` und der Teil-Radierer rechnen damit. Beim Stift bleibt es bei `penRadius`.
@@ -614,3 +614,10 @@ erzeugt Beispiele, veraPDF (Docker `verapdf/cli`) prüft PDF/A-2b.
 `js/ui/present.js` (Präsentation, Laser), `js/ink/leitner.js`, `js/export/cover.js` (`renderCoverImage`, `pageNumberImage`),
 `js/ui/export-dialog.js` (`openCoverDialog`, Optionen `pageNumbers`, `outline`), `js/ink/shapes.js` (zusätzlich `arrow`, `triangle`, `polygon`),
 Ordnerfarben in `js/ui/library.js`. Werkzeugleiste: ein Knopf „Messwerkzeuge“ (Menü), Seitenmenü mit Untermenü „Papier und Format…“.
+**Eigene Farbslots** (`js/ui/toolbar.js`, reine Logik in `js/ui/color-slots.js`): nach der Palette 3 Slots je Farb-Werkzeug (Stift,
+Bleistift, Textmarker getrennt), gespeichert in `notizen:prefs` unter `tool.<kind>.customs` (`['#rrggbb', ×3]`) und `tool.<kind>.slot`
+(zuletzt aktiv); ältere Daten mit `tool.<kind>.custom` → Slot 1, fehlende Slots aus `DEFAULT_CUSTOM_COLORS`/`DEFAULT_CUSTOM_HL_COLORS`
+(`config.js`). Jeder Slot ist ein `<label>` mit einem echten, unsichtbar darübergelegten `<input type="color">` (direkt angetippt, kein
+`showPicker()`); Antippen wählt den Slot, `input`/`change` setzen seine Farbe. Die Leiste baut die Farbknöpfe nur beim Werkzeugwechsel
+neu auf, damit das Input bei offenem Farbwähler im DOM bleibt. Die Werkzeugfarbe bleibt Paletten-Index oder `"#rrggbb"` (Strichformat
+unverändert). `toolbar.getCustomColors(kind)` liefert die Slotfarben (Lasso-Farbdialog).

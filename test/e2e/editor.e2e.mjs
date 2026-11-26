@@ -68,9 +68,18 @@ test('Lasso, Teil-Radierer, eigene Farbe, Formen-Halten, Seitenübersicht', { ti
     await pen(page, [[400, 850], [400, 900], [400, 950]]);
     await until(async () => (await strokesOf(page, noteId)).length === 4, { what: 'Strich geteilt' });
 
-    // ── Eigene Farbe für den Stift (Farbwähler-Eingabe wie im Werkzeugkasten) ──
+    // ── Eigene Farbe für den Stift: Slot 2 ist ein echtes, sichtbar platziertes Farb-Input (direkt antippbar) ──
     await page.getByRole('button', { name: 'Stift', exact: true }).click();
-    await page.locator('.tb input[type=color]').evaluate((el) => {
+    assert.equal(await page.locator('.tb-style input[type=color]').count(), 3, '3 eigene Farbslots');
+    const slot2 = page.getByLabel('Eigene Farbe 2', { exact: true });
+    const box = await slot2.boundingBox();
+    assert.ok(box && box.width >= 40 && box.height >= 40, 'Slot-Input deckt die Tippfläche ab (innerhalb des Rahmens)');
+    assert.ok(await slot2.evaluate((el) => {
+      const r = el.getBoundingClientRect();
+      const lr = el.parentElement.getBoundingClientRect();
+      return lr.width >= 44 && lr.height >= 44 && document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2) === el;
+    }), 'Slot ist 44 px groß und das Input liegt oben (direkt antippbar)');
+    await slot2.evaluate((el) => {
       el.value = '#00aa55';
       el.dispatchEvent(new Event('input', { bubbles: true }));
       el.dispatchEvent(new Event('change', { bubbles: true }));
@@ -81,6 +90,7 @@ test('Lasso, Teil-Radierer, eigene Farbe, Formen-Halten, Seitenübersicht', { ti
       const s = await strokesOf(page, noteId);
       return s.length === countBeforeColor + 1 && s[s.length - 1].color === '#00aa55';
     }, { what: 'Strich in eigener Farbe' });
+    assert.equal(await slot2.getAttribute('aria-current'), 'true', 'Slot 2 ist aktiv');
 
     // ── Formen-Halten: ruhig halten, danach wird der Kreis geschlossen ──
     const countBeforeShape = (await strokesOf(page, noteId)).length;

@@ -2,9 +2,17 @@
 // localStorage 'notizen:prefs' (key `tool`). Keyboard shortcuts only work while no input has focus.
 // Everything user-provided goes through textContent / attributes (no innerHTML).
 // Bleistift (kind 'pencil') hat wie der Stift Farben und 3 Stärken; seine Striche werden als Typ 'b' gespeichert.
+//
+// Farbwahl: feste Palette (Farbe = Index), danach 3 eigene Farbslots pro Farb-Werkzeug (Farbe = "#rrggbb", gespeichert
+// unter tool.<kind>.customs, zuletzt aktiver Slot unter tool.<kind>.slot; Logik in color-slots.js). Jeder Slot ist ein
+// <label> mit einem echten, unsichtbar darübergelegten <input type="color">: der Finger tippt direkt auf das Input, so
+// öffnet auch Safari/iPadOS den System-Farbwähler (kein showPicker()/click()). Antippen wählt den Slot sofort;
+// 'input' (Live-Vorschau) und 'change' übernehmen die Farbe. Die Leiste baut die Farbknöpfe nur beim Werkzeugwechsel
+// neu auf, sonst werden nur Klassen/Attribute aktualisiert – das Input bleibt im DOM, solange der Farbwähler offen ist.
 
-import { PEN_COLORS, PEN_COLOR_NAMES, PEN_WIDTHS, HL_COLORS, HL_COLOR_NAMES, PAPERS, PAPER_NAMES, PAGE_SIZES, SIZE_NAMES, isHexColor, DEFAULT_CUSTOM_COLOR, DEFAULT_CUSTOM_HL_COLOR } from '../config.js';
+import { PEN_COLORS, PEN_COLOR_NAMES, PEN_WIDTHS, HL_COLORS, HL_COLOR_NAMES, PAPERS, PAPER_NAMES, PAGE_SIZES, SIZE_NAMES, isHexColor, DEFAULT_CUSTOM_COLORS, DEFAULT_CUSTOM_HL_COLORS } from '../config.js';
 import { h, menu, promptText } from './dom.js';
+import { SLOT_COUNT, normalizeSlots, slotIndex, activeSlot, placeColor } from './color-slots.js';
 import { fullscreenSupported, isFullscreen, toggleFullscreen, onFullscreenChange } from './fullscreen.js';
 
 const PREFS_KEY = 'notizen:prefs';
@@ -25,6 +33,7 @@ const ICONS = {
   ruler: [{ d: 'M3 8.5h18v7H3z' }, { d: 'M6 15.5v-3M9 15.5v-2M12 15.5v-3M15 15.5v-2M18 15.5v-3' }],
   geo: [{ d: 'M2.5 18.5h19L12 9z' }, { d: 'M8 18.5a4 4 0 0 1 8 0' }, { d: 'M12 18.5v-2' }],
   compass: [{ d: 'M12 3v3' }, { d: 'M12 6L6.5 20' }, { d: 'M12 6l5.5 14' }, { d: 'M8.5 15h7', o: 0.6 }],
+  trash: [{ d: 'M4 7h16' }, { d: 'M9.5 7V4.8h5V7' }, { d: 'M6.5 7l1 13h9l1-13' }, { d: 'M10 11v6M14 11v6' }],
 };
 
 function icon(kind) {
@@ -63,38 +72,42 @@ const idx = (v, n) => (Number.isInteger(v) && v >= 0 && v < n ? v : 0);
 const colorOf = (v, n) => (isHexColor(v) ? v.toLowerCase() : idx(v, n));
 const penColorOf = (v) => colorOf(v, PEN_COLORS.length);
 const hlColorOf = (v) => colorOf(v, HL_COLORS.length);
-const customOf = (o, fallback) => (o && isHexColor(o.custom) ? o.custom.toLowerCase() : fallback);
+
+/** Farb-Werkzeug aus gespeicherten Einstellungen: Slots normalisieren (Migration custom → Slot 1); eine Hex-Farbe,
+ *  die in keinem Slot steht, kommt in den zuletzt aktiven Slot. */
+function colorMem(o, color, defaults) {
+  const pref = slotIndex(o && o.slot);
+  const placed = placeColor(normalizeSlots(o, defaults), color, pref);
+  return { color, customs: placed.customs, slot: isHexColor(color) ? placed.slot : pref };
+}
 
 /**
  * createToolbar({onTool, onUndo, onRedo, onBack, onTitle, onPageMenu, onAddPage, onQuiz, onRuler})
  *   onTool({kind, color, width})   — tool, color index and width index changed
  *   onTitle(newTitle)              — user renamed the note (dialog already confirmed)
- *   onPageMenu(action, value)      — 'paper' (value: paper code), 'orient' ('p'|'l'), 'size' ('a4'|'a5'|'a3'), 'pdf', 'delete'
+ *   onPageMenu(action, value)      — 'paper' (value: paper code), 'orient' ('p'|'l'), 'size' ('a4'|'a5'|'a3'), 'pdf', 'delete' (Blatt löschen, mit Nachfrage: Papierkorb-Knopf und ⋯-Menü)
  *   onRuler()                      — Lineal-Knopf oder Taste r (Editor schaltet das Lineal um und ruft setRuler auf)
  *   onGeo()                        — Geodreieck-Knopf oder Taste g (Editor schaltet um und ruft setGeo auf)
  *   onCompass()                    — Zirkel-Knopf oder Taste z (Editor schaltet um und ruft setCompass auf)
  * Returns {el, setHistory(canUndo, canRedo), setTitle(t), setPageInfo(i, n, {paper, orient, size}?), setTool(tool),
- *          setQuiz(available, active), setRuler(on), setGeo(on), setCompass(on), getTool(), destroy()}
+ *          setQuiz(available, active), setRuler(on), setGeo(on), setCompass(on), getTool(), getCustomColors(kind), destroy()}
+ *   setTool(tool)           — Werkzeug/Farbe setzen (Pipette); eine Hex-Farbe ohne passenden Slot kommt in den zuletzt aktiven Slot
+ *   getCustomColors(kind)   — Kopie der 3 eigenen Slotfarben ['#rrggbb', ×3] für 'pen' | 'pencil' | 'highlighter', sonst []
  */
 export function createToolbar({ onTool, onUndo, onRedo, onBack, onTitle, onPageMenu, onAddPage, onQuiz = () => {}, onRuler = () => {}, onGeo = () => {}, onCompass = () => {} }) {
   const saved = readPrefs().tool || {};
   let kind = KINDS.includes(saved.kind) ? saved.kind : 'pen';
   const mem = {
     pen: {
-      color: penColorOf(saved.pen && saved.pen.color),
+      ...colorMem(saved.pen, penColorOf(saved.pen && saved.pen.color), DEFAULT_CUSTOM_COLORS),
       width: idx(saved.pen && saved.pen.width, PEN_WIDTHS.length),
-      custom: customOf(saved.pen, DEFAULT_CUSTOM_COLOR),
     },
     // Bleistift: Standard Schwarz, Stärke „Mittel“. Ältere gespeicherte Einstellungen ohne pencil bekommen die Standards.
     pencil: {
-      color: penColorOf(saved.pencil && saved.pencil.color),
+      ...colorMem(saved.pencil, penColorOf(saved.pencil && saved.pencil.color), DEFAULT_CUSTOM_COLORS),
       width: Number.isInteger(saved.pencil && saved.pencil.width) ? idx(saved.pencil.width, PEN_WIDTHS.length) : 1,
-      custom: customOf(saved.pencil, DEFAULT_CUSTOM_COLOR),
     },
-    highlighter: {
-      color: hlColorOf(saved.highlighter && saved.highlighter.color),
-      custom: customOf(saved.highlighter, DEFAULT_CUSTOM_HL_COLOR),
-    },
+    highlighter: colorMem(saved.highlighter, hlColorOf(saved.highlighter && saved.highlighter.color), DEFAULT_CUSTOM_HL_COLORS),
     eraser: { mode: saved.eraser && saved.eraser.mode === 'part' ? 'part' : 'stroke' },
   };
   let pageInfo = { i: 0, n: 0, page: null };
@@ -110,7 +123,8 @@ export function createToolbar({ onTool, onUndo, onRedo, onBack, onTitle, onPageM
 
   const persist = () => {
     const p = readPrefs();
-    p.tool = { kind, pen: { ...mem.pen }, pencil: { ...mem.pencil }, highlighter: { ...mem.highlighter }, eraser: { ...mem.eraser } };
+    const copy = (m) => ({ ...m, customs: m.customs.slice() });
+    p.tool = { kind, pen: copy(mem.pen), pencil: copy(mem.pencil), highlighter: copy(mem.highlighter), eraser: { ...mem.eraser } };
     writePrefs(p);
   };
 
@@ -123,9 +137,18 @@ export function createToolbar({ onTool, onUndo, onRedo, onBack, onTitle, onPageM
   };
 
   const setColor = (i) => {
-    if (kind === 'pen') mem.pen.color = i;
-    else if (kind === 'pencil') mem.pencil.color = i;
-    else if (kind === 'highlighter') mem.highlighter.color = i;
+    if (!COLOR_KINDS.includes(kind)) return;
+    mem[kind].color = i;
+    emit();
+  };
+
+  /** Eigenen Farbslot wählen; mit `value` wird zugleich seine Farbe gesetzt (Farbwähler 'input'/'change'). */
+  const setSlot = (i, value) => {
+    if (!COLOR_KINDS.includes(kind)) return;
+    const m = mem[kind];
+    if (isHexColor(value)) m.customs[i] = value.toLowerCase();
+    m.slot = i;
+    m.color = m.customs[i];
     emit();
   };
 
@@ -157,6 +180,11 @@ export function createToolbar({ onTool, onUndo, onRedo, onBack, onTitle, onPageM
     type: 'button', className: 'tb-btn', title: 'Seite hinzufügen', 'aria-label': 'Seite nach dieser Seite hinzufügen',
     text: '+', onclick: () => onAddPage(),
   });
+  // Blatt löschen: direkt neben „+“; die Nachfrage kommt im Editor (onPageMenu('delete') → editor.js).
+  const delBtn = h('button', {
+    type: 'button', className: 'tb-btn tb-del', title: 'Blatt löschen', 'aria-label': 'Blatt löschen',
+    onclick: () => onPageMenu('delete'),
+  }, icon('trash'));
   const menuBtn = h('button', {
     type: 'button', className: 'tb-btn', title: 'Seitenmenü', 'aria-label': 'Seitenmenü',
     text: '⋯', onclick: () => openPageMenu(menuBtn),
@@ -202,84 +230,91 @@ export function createToolbar({ onTool, onUndo, onRedo, onBack, onTitle, onPageM
   const el = h('div', { className: 'tb', role: 'toolbar', 'aria-label': 'Werkzeuge' },
     h('div', { className: 'tb-left' }, backBtn, titleBtn),
     h('div', { className: 'tb-group tb-tools' }, toolBtns),
-    h('div', { className: 'tb-group tb-right' }, undoBtn, redoBtn, addBtn, quizBtn, fsBtn, instrBtn, menuBtn, infoEl),
+    h('div', { className: 'tb-group tb-right' }, undoBtn, redoBtn, addBtn, delBtn, quizBtn, fsBtn, instrBtn, menuBtn, infoEl),
     styleEl);
 
+  // Farb-, Slot- und Stärkeknöpfe: nur beim Werkzeugwechsel neu aufgebaut (build), sonst nur per sync aktualisiert.
+  // So bleibt ein angetipptes <input type="color"> im DOM, während der System-Farbwähler offen ist.
+  let builtKind = null;
+  let syncs = [];
+  const slotEls = {};   // kind → [{el, sync}], über Werkzeugwechsel hinweg dieselben Elemente
+  const pressed = (b, on) => { b.classList.toggle('on', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); };
+
   function render() {
-    for (const b of toolBtns) {
-      const on = b.dataset.kind === kind;
-      b.classList.toggle('on', on);
-      b.setAttribute('aria-pressed', on ? 'true' : 'false');
-    }
-    styleEl.replaceChildren();
+    for (const b of toolBtns) pressed(b, b.dataset.kind === kind);
     styleEl.hidden = kind === 'lasso';
-    if (kind === 'lasso') return;
-    if (kind === 'eraser') {
+    if (builtKind !== kind) build();
+    for (const s of syncs) s();
+  }
+
+  function build() {
+    const k = kind;
+    builtKind = k;
+    const items = [];
+    syncs = [];
+    const add = (node, sync) => { items.push(node); syncs.push(sync); };
+    if (k === 'eraser') {
       // Eraser modes: whole strokes or only the touched part.
       for (const [mode, label] of [['stroke', 'Ganze Striche'], ['part', 'Teilweise']]) {
-        const on = mem.eraser.mode === mode;
-        styleEl.append(h('button', {
-          type: 'button', className: 'tb-btn tb-mode' + (on ? ' on' : ''), text: label, 'aria-pressed': on ? 'true' : 'false',
+        const b = h('button', {
+          type: 'button', className: 'tb-btn tb-mode', text: label,
           onclick: () => { mem.eraser.mode = mode; emit(); },
-        }));
+        });
+        add(b, () => pressed(b, mem.eraser.mode === mode));
       }
-      return;
-    }
-    const isInk = kind === 'pen' || kind === 'pencil';   // Stift und Bleistift: Stift-Palette und 3 Stärken
-    const colors = isInk ? PEN_COLORS : HL_COLORS;
-    const names = isInk ? PEN_COLOR_NAMES : HL_COLOR_NAMES;
-    const cur = mem[kind].color;
-    colors.forEach((c, i) => {
-      const on = i === cur;
-      styleEl.append(h('button', {
-        type: 'button', className: 'tb-btn tb-sw' + (on ? ' on' : ''), title: names[i],
-        'aria-label': 'Farbe ' + names[i], 'aria-pressed': on ? 'true' : 'false', onclick: () => setColor(i),
-      }, h('span', { className: 'tb-dot', style: { background: c } })));
-    });
-    // After the palette: any color from the full RGB range (system color picker), per tool.
-    const customOn = isHexColor(cur);
-    styleEl.append(h('button', {
-      type: 'button', className: 'tb-btn tb-sw tb-custom' + (customOn ? ' on' : ''), title: 'Eigene Farbe wählen',
-      'aria-label': 'Eigene Farbe wählen', 'aria-pressed': customOn ? 'true' : 'false', onclick: openCustomColor,
-    }, h('span', { className: 'tb-dot', style: { background: mem[kind].custom } })));
-    if (isInk) {
-      PEN_WIDTHS.forEach((_, i) => {
-        const on = i === mem[kind].width;
-        const d = WIDTH_DOTS[i];
-        styleEl.append(h('button', {
-          type: 'button', className: 'tb-btn tb-w' + (on ? ' on' : ''), title: ['Fein', 'Mittel', 'Dick'][i],
-          'aria-label': 'Stärke ' + ['fein', 'mittel', 'dick'][i], 'aria-pressed': on ? 'true' : 'false',
-          onclick: () => setWidth(i),
-        }, h('span', { className: 'tb-dot', style: { width: d + 'px', height: d + 'px' } })));
+    } else if (COLOR_KINDS.includes(k)) {
+      const isInk = k === 'pen' || k === 'pencil';   // Stift und Bleistift: Stift-Palette und 3 Stärken
+      const colors = isInk ? PEN_COLORS : HL_COLORS;
+      const names = isInk ? PEN_COLOR_NAMES : HL_COLOR_NAMES;
+      colors.forEach((c, i) => {
+        const b = h('button', {
+          type: 'button', className: 'tb-btn tb-sw', title: names[i], 'aria-label': 'Farbe ' + names[i], onclick: () => setColor(i),
+        }, h('span', { className: 'tb-dot', style: { background: c } }));
+        add(b, () => pressed(b, mem[k].color === i));
       });
+      // Nach der Palette: 3 eigene Farbslots (voller RGB-Raum über den System-Farbwähler), je Werkzeug getrennt.
+      for (const s of slotsOf(k)) add(s.el, s.sync);
+      if (isInk) {
+        PEN_WIDTHS.forEach((_, i) => {
+          const d = WIDTH_DOTS[i];
+          const b = h('button', {
+            type: 'button', className: 'tb-btn tb-w', title: ['Fein', 'Mittel', 'Dick'][i],
+            'aria-label': 'Stärke ' + ['fein', 'mittel', 'dick'][i], onclick: () => setWidth(i),
+          }, h('span', { className: 'tb-dot', style: { width: d + 'px', height: d + 'px' } }));
+          add(b, () => pressed(b, mem[k].width === i));
+        });
+      }
     }
+    styleEl.replaceChildren(...items);
   }
 
-  // Native color input: kept in the DOM (invisible) because iOS only opens pickers of attached inputs.
-  const colorInput = h('input', {
-    type: 'color', className: 'tb-color-input', tabIndex: -1, 'aria-hidden': 'true',
-    oninput: () => applyCustom(colorInput.value),
-    onchange: () => applyCustom(colorInput.value),
-  });
-  el.append(colorInput);
-
-  function applyCustom(v) {
-    if (!isHexColor(v)) return;
-    if (!COLOR_KINDS.includes(kind)) return;
-    mem[kind].custom = v.toLowerCase();
-    setColor(mem[kind].custom);
-  }
-
-  function openCustomColor() {
-    if (!COLOR_KINDS.includes(kind)) return;
-    setColor(mem[kind].custom);
-    colorInput.value = mem[kind].custom;
-    try {
-      if (typeof colorInput.showPicker === 'function') colorInput.showPicker();
-      else colorInput.click();
-    } catch {
-      colorInput.click();
-    }
+  /** Slot-Elemente eines Farb-Werkzeugs: <label> mit Farbpunkt und echtem, darübergelegtem <input type="color">. */
+  function slotsOf(k) {
+    if (slotEls[k]) return slotEls[k];
+    slotEls[k] = Array.from({ length: SLOT_COUNT }, (_, i) => {
+      const name = 'Eigene Farbe ' + (i + 1);
+      const dot = h('span', { className: 'tb-dot' });
+      const input = h('input', {
+        type: 'color', className: 'tb-color-input', title: name + ' (antippen zum Wählen)', 'aria-label': name,
+        dataset: { slot: String(i) },
+        // Antippen wählt den Slot sofort (der Farbwähler öffnet sich trotzdem); input = Live-Vorschau, change = fertig.
+        onclick: () => { if (kind === k) setSlot(i); },
+        oninput: () => { if (kind === k) setSlot(i, input.value); },
+        onchange: () => { if (kind === k) setSlot(i, input.value); },
+      });
+      const wrap = h('label', { className: 'tb-btn tb-sw tb-custom', title: name }, dot, input);
+      const sync = () => {
+        const m = mem[k];
+        const c = m.customs[i];
+        dot.style.background = c;
+        if (input.value !== c) input.value = c;
+        const on = activeSlot(m.customs, m.color, m.slot) === i;
+        wrap.classList.toggle('on', on);
+        if (on) input.setAttribute('aria-current', 'true'); else input.removeAttribute('aria-current');
+      };
+      return { el: wrap, sync };
+    });
+    return slotEls[k];
   }
 
   async function rename() {
@@ -326,7 +361,7 @@ export function createToolbar({ onTool, onUndo, onRedo, onBack, onTitle, onPageM
       { label: 'Als PDF exportieren', icon: ' ', onSelect: () => onPageMenu('pdf') },
       { label: 'Seite duplizieren', icon: ' ', onSelect: () => onPageMenu('duplicate') },
       'sep',
-      { label: 'Seite löschen', icon: ' ', danger: true, onSelect: () => onPageMenu('delete') },
+      { label: 'Blatt löschen', icon: ' ', danger: true, onSelect: () => onPageMenu('delete') },
     ]);
   }
 
@@ -334,7 +369,8 @@ export function createToolbar({ onTool, onUndo, onRedo, onBack, onTitle, onPageM
   function onKey(e) {
     if (e.altKey) return;
     const a = document.activeElement;
-    if (a && (a.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName))) return;
+    // Ein fokussierter Farbslot (<input type="color">) ist kein Textfeld: Tastenkürzel bleiben aktiv.
+    if (a && (a.isContentEditable || /^(TEXTAREA|SELECT)$/.test(a.tagName) || (a.tagName === 'INPUT' && a.type !== 'color'))) return;
     if (document.querySelector('.nz-backdrop')) return;
     const key = (e.key || '').toLowerCase();
     if (e.metaKey || e.ctrlKey) {
@@ -387,18 +423,26 @@ export function createToolbar({ onTool, onUndo, onRedo, onBack, onTitle, onPageM
       kind = t.kind;
       if (kind === 'pen' || kind === 'pencil') {
         mem[kind].color = penColorOf(t.color);
-        if (isHexColor(t.color)) mem[kind].custom = t.color.toLowerCase();
         mem[kind].width = idx(t.width, PEN_WIDTHS.length);
       } else if (kind === 'highlighter') {
         mem.highlighter.color = hlColorOf(t.color);
-        if (isHexColor(t.color)) mem.highlighter.custom = t.color.toLowerCase();
       } else if (kind === 'eraser' && (t.mode === 'part' || t.mode === 'stroke')) {
         mem.eraser.mode = t.mode;
+      }
+      // Hex-Farbe (z. B. Pipette): steht sie in keinem Slot, kommt sie in den zuletzt aktiven Slot.
+      if (COLOR_KINDS.includes(kind) && isHexColor(mem[kind].color)) {
+        const placed = placeColor(mem[kind].customs, mem[kind].color, mem[kind].slot);
+        mem[kind].customs = placed.customs;
+        mem[kind].slot = placed.slot;
       }
       persist();
       render();
     },
     getTool: current,
+    /** Die 3 eigenen Slotfarben ("#rrggbb") eines Farb-Werkzeugs ('pen' | 'pencil' | 'highlighter'), sonst []. */
+    getCustomColors(k) {
+      return COLOR_KINDS.includes(k) ? mem[k].customs.slice() : [];
+    },
     destroy() {
       document.removeEventListener('keydown', onKey);
       offFs();

@@ -25,8 +25,9 @@ export const PEN_COLOR_NAMES = ['Schwarz', 'Dunkelblau', 'Rot', 'Grün', 'Orange
 export const isHexColor = (c) => typeof c === 'string' && /^#[0-9a-f]{6}$/i.test(c);
 export const penColor = (c) => (isHexColor(c) ? c : PEN_COLORS[c] || PEN_COLORS[0]);
 export const hlColor = (c) => (isHexColor(c) ? c : HL_COLORS[c] || HL_COLORS[0]);
-export const DEFAULT_CUSTOM_COLOR = '#0a8f8f';
-export const DEFAULT_CUSTOM_HL_COLOR = '#ffb000';
+/** Startfarben der 3 eigenen Farbslots (Werkzeugleiste): Stift und Bleistift bzw. Textmarker. Absichtlich nicht in der Palette. */
+export const DEFAULT_CUSTOM_COLORS = ['#0a8f8f', '#8e5a2b', '#d81b60'];
+export const DEFAULT_CUSTOM_HL_COLORS = ['#ffb000', '#5ec8ff', '#c39bff'];
 
 export const PEN_WIDTHS = [4, 7, 12];                 // base diameter in 0.1 mm
 export const PEN_WIDTH_NAMES = ['Fein', 'Mittel', 'Dick'];

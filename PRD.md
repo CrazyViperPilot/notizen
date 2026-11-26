@@ -82,10 +82,10 @@ Das erste Admin-Konto kommt aus GitHub-Secrets (Abschnitt 9). Weitere Admins kan
 
 ### 6.2 Werkzeuge
 - **Stift** mit Druckempfindlichkeit, **3 Stärken** (fein, mittel, dick) und **6 Farben** (Schwarz, Dunkelblau, Rot, Grün, Orange, Lila),
-  danach ein Feld **„Eigene Farbe“**: öffnet den Farbwähler des Systems (voller RGB-Raum); die zuletzt gewählte eigene Farbe bleibt gemerkt.
-- **Textmarker**: halbtransparent, liegt optisch unter der Schrift, 3 Farben (Gelb, Grün, Pink) und ebenfalls ein Feld **„Eigene Farbe“**
+  danach **3 eigene Farbslots**: Antippen wählt den Slot und öffnet den Farbwähler des Systems (voller RGB-Raum); die Slotfarben bleiben gemerkt.
+- **Textmarker**: halbtransparent, liegt optisch unter der Schrift, 3 Farben (Gelb, Grün, Pink) und ebenfalls **3 eigene Farbslots**
   (eigene Farbe wird getrennt vom Stift gemerkt), fester breiter Strich.
-- **Bleistift** zum Schraffieren: halbtransparent, 3 Stärken und die Farben des Stifts (inkl. „Eigene Farbe“). Die Breite hängt am
+- **Bleistift** zum Schraffieren: halbtransparent, 3 Stärken und die Farben des Stifts (inkl. 3 eigener Farbslots). Die Breite hängt am
   Apple Pencil: schräg gehalten wird der Strich breit und weich, senkrecht bleibt er fein.
 - **Radierer**: Modus „Ganze Striche“ (löscht berührte Striche) oder „Teilweise“ (entfernt nur den berührten Teil).
   Stifte mit **Radier-Ende** oder **Seitentaste** (gedrückt halten beim Schreiben) radieren direkt, ohne Werkzeugwechsel –
