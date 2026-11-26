@@ -454,7 +454,7 @@ Beim Start ruft die App `navigator.storage.persist()` auf.
 ### 10.4 Seitenübersicht
 - `js/ui/pages.js`: `openPageOverview({model, noteId, currentPageId, getImage, onJump}) → Promise<void>` – Vollbild-Raster aller Seiten
   als Miniaturen (mit Papier, Hintergrundbild, Strichen), Antippen springt zur Seite, Umsortieren per Ziehen (langes Drücken) und alternativ
-  Knöpfe ◀ ▶, Menü pro Seite: Duplizieren, Löschen (letzte Seite nicht). Nutzt `model.movePage/duplicatePage/deletePage`.
+  Knöpfe ◀ ▶, Menü pro Seite: Duplizieren, Blatt löschen mit Nachfrage (einziges Blatt wird durch ein leeres ersetzt). Nutzt `model.movePage/duplicatePage/deletePage`.
 
 ## 11. Runde 3: Schul-Lineaturen, Vokabeltrainer, Favoriten, Formen, Datensicherung (verbindlich für P23–P30)
 

@@ -234,7 +234,7 @@ export async function openPageOverview({ model, noteId, currentPageId = null, ge
     if (i > 0) items.push({ label: 'Nach vorne', onSelect: () => moveBy(pageId, -1) });
     if (i < pages.length - 1) items.push({ label: 'Nach hinten', onSelect: () => moveBy(pageId, 1) });
     items.push({ label: 'Duplizieren', onSelect: () => duplicate(pageId) });
-    items.push({ label: 'Löschen', danger: true, onSelect: () => removePage(pageId) });
+    items.push({ label: 'Blatt löschen', danger: true, onSelect: () => removePage(pageId) });
     menu(anchor, items);
   }
 
@@ -275,21 +275,30 @@ export async function openPageOverview({ model, noteId, currentPageId = null, ge
     });
   }
 
+  /** Blatt löschen (mit Nachfrage). Ist es das einzige Blatt, wird vorher ein leeres Ersatzblatt angelegt. */
   async function removePage(pageId) {
-    if (pages.length <= 1) {
-      toast('Die letzte Seite kann nicht gelöscht werden.');
-      return;
-    }
+    const page = pages.find((p) => p.id === pageId);
+    if (!page) return;
+    const last = pages.length <= 1;
     const ok = await confirmDialog({
-      title: 'Seite löschen',
-      message: 'Diese Seite mit allem, was darauf steht, entfernen?',
+      title: 'Blatt löschen?',
+      message: last
+        ? 'Dieses Blatt mit allem, was darauf steht, löschen? Das ist das einzige Blatt dieser Notiz. Es wird durch ein leeres Blatt ersetzt.'
+        : 'Dieses Blatt mit allem, was darauf steht, löschen?',
       okLabel: 'Löschen',
       danger: true,
     });
     if (!ok || closed) return;
     return act(async () => {
+      let focusId = null;
+      // Eine Notiz braucht mindestens ein Blatt: erst das leere Ersatzblatt (gleiches Papier/Format), dann das alte löschen.
+      const rows = await model.listPages(noteId);
+      if (rows.length === 1 && rows[0].id === pageId) {
+        const fresh = await model.addPage(noteId, pageId, { paper: page.paper, orient: page.orient, size: page.size || 'a4' });
+        focusId = fresh.id;
+      }
       await model.deletePage(pageId);
-      return null;
+      return focusId;
     });
   }
 
